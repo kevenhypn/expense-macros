@@ -18,6 +18,7 @@ export const SetupWizard = () => {
   ]);
   const [savingsMode, setSavingsMode] = useState<"percent" | "fixed">("percent");
   const [savingsValue, setSavingsValue] = useState<string>("20"); // 20% or $20
+  const [rolloverUnspent, setRolloverUnspent] = useState(true);
 
   // Helpers
   const addBill = () => setBills([...bills, { id: generateId(), name: "", amount: 0 }]);
@@ -43,6 +44,7 @@ export const SetupWizard = () => {
       monthlyIncome: parseFloat(monthlyIncome) || 0,
       bills: bills.filter(b => b.name.trim() !== ""),
       savingsGoal,
+      rolloverUnspent,
     };
 
     saveConfig(config);
@@ -72,6 +74,20 @@ export const SetupWizard = () => {
           className="w-full bg-[#2a2a2a] p-4 rounded-xl text-white text-xl border border-[#333] focus:border-green-500 outline-none"
         />
       </div>
+      <label className="flex items-center justify-between bg-[#2a2a2a] p-4 rounded-xl border border-[#333]">
+        <div>
+          <div className="text-gray-200 font-medium">Rollover unspent budget</div>
+          <div className="text-xs text-gray-500">
+            Unused daily budget carries into remaining days.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={rolloverUnspent}
+          onChange={(e) => setRolloverUnspent(e.target.checked)}
+          className="h-5 w-5 accent-green-500"
+        />
+      </label>
       <button 
         disabled={!monthlyIncome}
         onClick={() => setStep(2)} 
@@ -177,6 +193,10 @@ export const SetupWizard = () => {
           <div className="flex justify-between">
             <span className="text-gray-400">Savings</span>
             <span className="text-red-500 font-bold">-${saveAmt.toFixed(0)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">Rollover</span>
+            <span className="text-white font-medium">{rolloverUnspent ? "On" : "Off"}</span>
           </div>
           <div className="h-px bg-[#333] my-2"></div>
           <div className="flex justify-between text-lg">

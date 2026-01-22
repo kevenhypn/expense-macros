@@ -29,6 +29,8 @@ export const Dashboard = () => {
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState<"All" | "Spending" | "Bills" | "Savings" | "Income">("All");
   const [expandedCard, setExpandedCard] = useState<"period" | "today" | null>(null);
+  const [viewMode, setViewMode] = useState<"day" | "period">("day");
+  const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState("");
   const [editAmount, setEditAmount] = useState("");
@@ -49,11 +51,17 @@ export const Dashboard = () => {
   if (!config) return null;
 
   // --- Calculations ---
-  const todayISO = getTodayISO();
+  const selectedDate = new Date(`${selectedDateISO}T00:00:00`);
+  const selectedDateLabel = selectedDate.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const rolloverUnspent = config.rolloverUnspent ?? false;
   const { availableToSpend: baseAvailableToSpend } = calculateFinancials(config);
   
   // Filter for current month
-  const currentMonthTxs = transactions.filter(t => isSameMonth(t.date, todayISO));
+  const currentMonthTxs = transactions.filter(t => isSameMonth(t.date, selectedDateISO));
 
   // Discretionary calculation
   const discretionarySpent = currentMonthTxs.reduce((sum, t) => {
@@ -71,13 +79,45 @@ export const Dashboard = () => {
 
   const availableToSpend = baseAvailableToSpend + incomeAdjustments;
   const periodLeft = availableToSpend - discretionarySpent;
-  const daysPassed = new Date().getDate(); // approximate days passed in month
+  const daysPassed = selectedDate.getDate(); // approximate days passed in month
 
   // B) Today's Budget Logic
-  const dim = daysInMonth(todayISO);
-  const dailyBudget = availableToSpend / dim;
-  
-  const todayTxs = currentMonthTxs.filter(t => t.date === todayISO);
+  const dim = daysInMonth(selectedDateISO);
+  const baseDailyBudget = availableToSpend / dim;
+  const monthPrefix = selectedDateISO.slice(0, 7);
+  const selectedDay = selectedDate.getDate();
+  const selectedDayTxs = currentMonthTxs.filter((t) => t.date === selectedDateISO);
+  const spendingByDate = currentMonthTxs.reduce((acc, t) => {
+    if (["Bills", "Savings", "Income"].includes(t.category)) return acc;
+    if (t.amount < 0) {
+      acc[t.date] = (acc[t.date] ?? 0) + Math.abs(t.amount);
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  let dailyBudget = baseDailyBudget;
+  let overspentDays = 0;
+
+  if (rolloverUnspent) {
+    let remainingBudget = availableToSpend;
+    for (let day = 1; day <= dim; day += 1) {
+      const remainingDays = dim - day + 1;
+      const dayBudget = remainingBudget / remainingDays;
+      const dateISO = `${monthPrefix}-${String(day).padStart(2, "0")}`;
+      const spent = spendingByDate[dateISO] ?? 0;
+      if (spent > dayBudget) overspentDays += 1;
+      if (day === selectedDay) dailyBudget = dayBudget;
+      remainingBudget -= spent;
+    }
+  } else {
+    for (let day = 1; day <= dim; day += 1) {
+      const dateISO = `${monthPrefix}-${String(day).padStart(2, "0")}`;
+      const spent = spendingByDate[dateISO] ?? 0;
+      if (spent > baseDailyBudget) overspentDays += 1;
+    }
+  }
+
+  const todayTxs = selectedDayTxs;
   const todaySpent = todayTxs.reduce((sum, t) => {
     if (["Bills", "Savings", "Income"].includes(t.category)) return sum;
     if (t.amount < 0) return sum + Math.abs(t.amount);
@@ -136,7 +176,7 @@ export const Dashboard = () => {
 
     const newTx: Transaction = {
       id: generateId(),
-      date: getTodayISO(),
+      date: selectedDateISO,
       amount: isIncome ? Math.abs(val) : -Math.abs(val),
       category: selectedCat,
       note: note,
@@ -198,7 +238,7 @@ export const Dashboard = () => {
 
   // Filter Logic
   const getFilteredTransactions = () => {
-    return currentMonthTxs.filter(t => {
+    return selectedDayTxs.filter(t => {
       if (filter === "All") return true;
       if (filter === "Spending") return !["Bills", "Savings", "Income"].includes(t.category);
       return t.category === filter;
@@ -225,10 +265,19 @@ export const Dashboard = () => {
   const filteredList = getFilteredTransactions();
 
   return (
-    <div className="min-h-screen bg-[#121212] text-white pb-20">
+    <div className="min-h-screen bg-[#121212] text-white pb-32">
       {/* Header */}
       <div className="p-6 flex justify-between items-center sticky top-0 bg-[#121212]/95 backdrop-blur-sm z-10">
-        <h1 className="text-3xl font-bold">Today</h1>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-3xl font-bold">{selectedDateLabel}</h1>
+          <input
+            type="date"
+            value={selectedDateISO}
+            onChange={(event) => setSelectedDateISO(event.target.value)}
+            className="text-xs text-gray-400 bg-transparent border border-gray-700/40 rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-500/60"
+            aria-label="Select day"
+          />
+        </div>
         <div className="flex gap-4">
           <button className="text-gray-400 hover:text-white" onClick={() => window.location.reload()}>
             <RefreshCw size={24} />
@@ -239,252 +288,289 @@ export const Dashboard = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="px-6 flex flex-col gap-4 mb-6">
-        <div>
-          <button
-            type="button"
-            onClick={() => setExpandedCard(expandedCard === "period" ? null : "period")}
-            className="w-full text-left"
-          >
-            <SummaryCard
-              title="Period Budget"
-              mainValue={`$${periodLeft.toFixed(0)}`}
-              mainIsPositive={periodLeft >= 0}
-              subValue={`$${availableToSpend.toFixed(0)} total`}
-              footerText={`Spent: $${discretionarySpent.toFixed(0)} • Day ${daysPassed}`}
-            >
-              {expandedCard === "period" && (
-                <div className="space-y-3">
-                  <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                    Period log
-                  </div>
-                  {periodSpending.totalSpent === 0 ? (
-                    <div className="text-xs text-gray-500">
-                      No spending yet for this period.
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {spendingCategories.map((cat) => {
-                        const spent = periodSpending.totals[cat];
-                        if (spent <= 0) return null;
-                        const pctSpent = periodSpending.totalSpent
-                          ? (spent / periodSpending.totalSpent) * 100
-                          : 0;
-                        const pctIncome = config.monthlyIncome
-                          ? (spent / config.monthlyIncome) * 100
-                          : 0;
-                        return (
-                          <div key={cat} className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <div className="text-sm text-white">{cat}</div>
-                              <div className="text-xs text-gray-500">
-                                {pctSpent.toFixed(0)}% spent • {pctIncome.toFixed(0)}% income
+      {viewMode === "day" ? (
+        <>
+          {/* Summary Cards */}
+          <div className="px-6 flex flex-col gap-4 mb-6">
+            <div className="opacity-70">
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedCard(null);
+                  setViewMode("period");
+                }}
+                className="w-full text-left"
+              >
+                <SummaryCard
+                  title="Period Budget"
+                  mainValue={`$${periodLeft.toFixed(0)}`}
+                  mainIsPositive={periodLeft >= 0}
+                  subValue={`$${availableToSpend.toFixed(0)} total`}
+                  footerText={`Tap for period breakdown • Day ${daysPassed}`}
+                />
+              </button>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => setExpandedCard(expandedCard === "today" ? null : "today")}
+                className="w-full text-left"
+              >
+                <SummaryCard
+                  title="Today's Budget"
+                  mainValue={`$${todayLeft.toFixed(0)}`}
+                  mainIsPositive={todayLeft >= 0}
+                  subValue={`$${dailyBudget.toFixed(0)} ${rolloverUnspent ? "rolling" : "fixed"}`}
+                  footerText="Daily limit"
+                >
+                  {expandedCard === "today" && (
+                    <div className="space-y-3">
+                      <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                        Today&apos;s spending
+                      </div>
+                      {todaySpending.totalSpent === 0 ? (
+                        <div className="text-xs text-gray-500">
+                          No spending yet today.
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {spendingCategories.map((cat) => {
+                            const spent = todaySpending.totals[cat];
+                            if (spent <= 0) return null;
+                            const pctSpent = todaySpending.totalSpent
+                              ? (spent / todaySpending.totalSpent) * 100
+                              : 0;
+                            const pctIncome = config.monthlyIncome
+                              ? (spent / config.monthlyIncome) * 100
+                              : 0;
+                            return (
+                              <div key={cat} className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <div className="text-sm text-white">{cat}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {pctSpent.toFixed(0)}% spent • {pctIncome.toFixed(0)}% income
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                                    <div
+                                      className="h-2"
+                                      style={{
+                                        width: `${Math.min(100, pctSpent)}%`,
+                                        backgroundColor: CATEGORY_STYLES[cat].selectedBg,
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                                    <div
+                                      className="h-2"
+                                      style={{
+                                        width: `${Math.min(100, pctIncome)}%`,
+                                        backgroundColor: CATEGORY_STYLES[cat].unselectedBg,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="space-y-3">
+                        {todaySpendingTxs.map((tx) => (
+                          <div key={tx.id} className={`flex justify-between items-center gap-3 ${tx.isSystem ? 'opacity-50' : 'opacity-100'}`}>
+                            <div className="flex gap-3 items-center">
+                              <div
+                                className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                style={{ backgroundColor: CATEGORY_STYLES[tx.category].badgeBg }}
+                              >
+                                {tx.category[0]}
+                              </div>
+                              <div>
+                                <div className="font-medium text-white">{tx.category}</div>
+                                <div className="text-xs text-gray-500">
+                                  {tx.note ? `${tx.note} • ${tx.date}` : tx.date}
+                                </div>
                               </div>
                             </div>
-                            <div className="space-y-2">
-                              <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                <div
-                                  className="h-2"
-                                  style={{
-                                    width: `${Math.min(100, pctSpent)}%`,
-                                    backgroundColor: CATEGORY_STYLES[cat].selectedBg,
-                                  }}
-                                />
-                              </div>
-                              <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                <div
-                                  className="h-2"
-                                  style={{
-                                    width: `${Math.min(100, pctIncome)}%`,
-                                    backgroundColor: CATEGORY_STYLES[cat].unselectedBg,
-                                  }}
-                                />
-                              </div>
+                            <div className="font-bold text-white">
+                              {tx.amount.toFixed(2)}
                             </div>
                           </div>
-                        );
-                      })}
+                        ))}
+                        {todaySpendingTxs.length === 0 && (
+                          <div className="text-center text-gray-600">No transactions found</div>
+                        )}
+                      </div>
                     </div>
                   )}
-                  <div className="space-y-3">
-                    {periodLogTxs.map((tx) => (
-                      <div key={tx.id} className={`flex justify-between items-center gap-3 ${tx.isSystem ? 'opacity-50' : 'opacity-100'}`}>
-                        <div className="flex gap-3 items-center">
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold"
-                            style={{ backgroundColor: CATEGORY_STYLES[tx.category].badgeBg }}
-                          >
-                            {tx.category[0]}
-                          </div>
-                          <div>
-                            <div className="font-medium text-white">{tx.category}</div>
-                            <div className="text-xs text-gray-500">
-                              {tx.note ? `${tx.note} • ${tx.date}` : tx.date} {tx.isSystem && "(Auto)"}
-                            </div>
-                          </div>
-                        </div>
-                        <div className={`font-bold ${tx.amount > 0 ? 'text-green-500' : 'text-white'}`}>
-                          {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                    {periodLogTxs.length === 0 && (
-                      <div className="text-center text-gray-600">No transactions found</div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </SummaryCard>
-          </button>
-        </div>
-        <div>
-          <button
-            type="button"
-            onClick={() => setExpandedCard(expandedCard === "today" ? null : "today")}
-            className="w-full text-left"
-          >
-            <SummaryCard
-              title="Today's Budget"
-              mainValue={`$${todayLeft.toFixed(0)}`}
-              mainIsPositive={todayLeft >= 0}
-              subValue={`$${dailyBudget.toFixed(0)} total`}
-              footerText="Daily limit"
-            >
-              {expandedCard === "today" && (
-                <div className="space-y-3">
-                  <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                    Today&apos;s spending
-                  </div>
-                  {todaySpending.totalSpent === 0 ? (
-                    <div className="text-xs text-gray-500">
-                      No spending yet today.
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {spendingCategories.map((cat) => {
-                        const spent = todaySpending.totals[cat];
-                        if (spent <= 0) return null;
-                        const pctSpent = todaySpending.totalSpent
-                          ? (spent / todaySpending.totalSpent) * 100
-                          : 0;
-                        const pctIncome = config.monthlyIncome
-                          ? (spent / config.monthlyIncome) * 100
-                          : 0;
-                        return (
-                          <div key={cat} className="space-y-2">
-                            <div className="flex justify-between items-center">
-                              <div className="text-sm text-white">{cat}</div>
-                              <div className="text-xs text-gray-500">
-                                {pctSpent.toFixed(0)}% spent • {pctIncome.toFixed(0)}% income
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                <div
-                                  className="h-2"
-                                  style={{
-                                    width: `${Math.min(100, pctSpent)}%`,
-                                    backgroundColor: CATEGORY_STYLES[cat].selectedBg,
-                                  }}
-                                />
-                              </div>
-                              <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                <div
-                                  className="h-2"
-                                  style={{
-                                    width: `${Math.min(100, pctIncome)}%`,
-                                    backgroundColor: CATEGORY_STYLES[cat].unselectedBg,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <div className="space-y-3">
-                    {todaySpendingTxs.map((tx) => (
-                      <div key={tx.id} className={`flex justify-between items-center gap-3 ${tx.isSystem ? 'opacity-50' : 'opacity-100'}`}>
-                        <div className="flex gap-3 items-center">
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold"
-                            style={{ backgroundColor: CATEGORY_STYLES[tx.category].badgeBg }}
-                          >
-                            {tx.category[0]}
-                          </div>
-                          <div>
-                            <div className="font-medium text-white">{tx.category}</div>
-                            <div className="text-xs text-gray-500">
-                              {tx.note ? `${tx.note} • ${tx.date}` : tx.date}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="font-bold text-white">
-                          {tx.amount.toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
-                    {todaySpendingTxs.length === 0 && (
-                      <div className="text-center text-gray-600">No transactions found</div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </SummaryCard>
-          </button>
-        </div>
-      </div>
+                </SummaryCard>
+              </button>
+            </div>
+          </div>
 
-      {/* Add Transaction Form */}
-      <div className="px-6 mb-8">
-        <AmountToggle
-          amount={amount}
-          setAmount={setAmount}
-          isIncome={isIncome}
-          setIsIncome={setIsIncome}
-        />
-        <CategoryGrid selected={selectedCat} onSelect={setSelectedCat} />
-        
-        <input 
-          type="text" 
-          placeholder="Note (optional)" 
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          className="w-full bg-transparent border-b border-[#333] pb-2 mb-6 text-gray-400 focus:outline-none focus:border-green-500"
-        />
+          {/* Add Transaction Form */}
+          <div className="px-6 mb-8">
+            <AmountToggle
+              amount={amount}
+              setAmount={setAmount}
+              isIncome={isIncome}
+              setIsIncome={setIsIncome}
+            />
+            <CategoryGrid selected={selectedCat} onSelect={setSelectedCat} />
+            
+            <input 
+              type="text" 
+              placeholder="Note (optional)" 
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full bg-transparent border-b border-[#333] pb-2 mb-6 text-gray-400 focus:outline-none focus:border-green-500"
+            />
 
-        <button
-          onClick={handleAddTransaction}
-          className={`w-full text-white font-bold py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-transform ${
-            isIncome ? "bg-green-600 shadow-green-900/20" : "bg-red-600 shadow-red-900/20"
-          }`}
-        >
-          Add Transaction
-        </button>
-      </div>
-
-      {/* Log Section */}
-      <div className="bg-[#1a1a1a] rounded-t-3xl min-h-[400px] p-6 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-        <div className="flex gap-4 mb-6 overflow-x-auto pb-2 no-scrollbar">
-          {["All", "Spending", "Bills", "Savings", "Income"].map(f => (
             <button
-              key={f}
-              onClick={() => setFilter(f as any)}
-              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium ${filter === f ? 'bg-white text-black' : 'bg-[#2a2a2a] text-gray-400'}`}
+              onClick={handleAddTransaction}
+              className={`w-full text-white font-bold py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-transform ${
+                isIncome ? "bg-green-600 shadow-green-900/20" : "bg-red-600 shadow-red-900/20"
+              }`}
             >
-              {f}
+              Add Transaction
             </button>
-          ))}
-        </div>
+          </div>
 
-        <div className="space-y-4">
-          {filteredList.map((tx) => (
-            <div key={tx.id} className="space-y-2">
-              <div className={`flex justify-between items-center gap-3 ${tx.isSystem ? 'opacity-50' : 'opacity-100'}`}>
+          {/* Log Section */}
+          <div className="bg-[#1a1a1a] rounded-t-3xl min-h-[400px] p-6 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+            <div className="flex gap-4 mb-6 overflow-x-auto pb-2 no-scrollbar">
+              {["All", "Spending", "Bills", "Savings", "Income"].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f as any)}
+                  className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium ${filter === f ? 'bg-white text-black' : 'bg-[#2a2a2a] text-gray-400'}`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              {filteredList.map((tx) => (
+                <div key={tx.id} className="space-y-2">
+                  <div className={`flex justify-between items-center gap-3 ${tx.isSystem ? 'opacity-50' : 'opacity-100'}`}>
+                    <div className="flex gap-3 items-center">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold ${CATEGORY_STYLES[tx.category].badge}`}>
+                        {tx.category[0]}
+                      </div>
+                      <div>
+                        <div className="font-medium text-white">{tx.category}</div>
+                        <div className="text-xs text-gray-500">
+                          {tx.note ? `${tx.note} • ${tx.date}` : tx.date} {tx.isSystem && "(Auto)"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className={`font-bold ${tx.amount > 0 ? 'text-green-500' : 'text-white'}`}>
+                        {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
+                      </div>
+                      <button
+                        onClick={() => handleStartEdit(tx)}
+                        className="text-gray-500 hover:text-white transition-colors"
+                        aria-label={`Edit ${tx.category} transaction`}
+                      >
+                        <Pencil size={18} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTransaction(tx.id)}
+                        className="text-gray-500 hover:text-red-400 transition-colors"
+                        aria-label={`Delete ${tx.category} transaction`}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {filteredList.length === 0 && (
+                <div className="text-center text-gray-600 mt-10">No transactions found</div>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="px-6 flex flex-col gap-4 mb-24">
+          <div className="bg-[#1e1e1e] border border-[#333] rounded-3xl p-5 space-y-3">
+            <div className="text-gray-400 text-sm uppercase tracking-wider font-semibold">
+              Period breakdown
+            </div>
+            <div className="flex justify-between">
+              <div>
+                <div className="text-xs text-gray-500">Left</div>
+                <div className={`text-2xl font-bold ${periodLeft >= 0 ? "text-green-500" : "text-red-500"}`}>
+                  ${periodLeft.toFixed(0)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Overspent days</div>
+                <div className="text-2xl font-bold text-white">{overspentDays}</div>
+              </div>
+            </div>
+            <div className="flex justify-between">
+              <div>
+                <div className="text-xs text-gray-500">Spent</div>
+                <div className="text-lg font-semibold text-white">${discretionarySpent.toFixed(0)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Budget mode</div>
+                <div className="text-lg font-semibold text-white">{rolloverUnspent ? "Rollover" : "Fixed"}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#1e1e1e] border border-[#333] rounded-3xl p-5 space-y-4">
+            <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+              Category breakdown
+            </div>
+            {periodSpending.totalSpent === 0 ? (
+              <div className="text-xs text-gray-500">No spending yet for this period.</div>
+            ) : (
+              spendingCategories.map((cat) => {
+                const spent = periodSpending.totals[cat];
+                if (spent <= 0) return null;
+                const pctSpent = periodSpending.totalSpent
+                  ? (spent / periodSpending.totalSpent) * 100
+                  : 0;
+                return (
+                  <div key={cat} className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <div className="text-sm text-white">{cat}</div>
+                      <div className="text-xs text-gray-500">
+                        {pctSpent.toFixed(0)}% • ${spent.toFixed(0)}
+                      </div>
+                    </div>
+                    <div className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                      <div
+                        className="h-2"
+                        style={{
+                          width: `${Math.min(100, pctSpent)}%`,
+                          backgroundColor: CATEGORY_STYLES[cat].selectedBg,
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="bg-[#1a1a1a] rounded-3xl p-5 space-y-3">
+            <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+              Period log
+            </div>
+            {periodLogTxs.map((tx) => (
+              <div key={tx.id} className={`flex justify-between items-center gap-3 ${tx.isSystem ? 'opacity-50' : 'opacity-100'}`}>
                 <div className="flex gap-3 items-center">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold ${CATEGORY_STYLES[tx.category].badge}`}>
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold"
+                    style={{ backgroundColor: CATEGORY_STYLES[tx.category].badgeBg }}
+                  >
                     {tx.category[0]}
                   </div>
                   <div>
@@ -494,31 +580,38 @@ export const Dashboard = () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className={`font-bold ${tx.amount > 0 ? 'text-green-500' : 'text-white'}`}>
-                    {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
-                  </div>
-                  <button
-                    onClick={() => handleStartEdit(tx)}
-                    className="text-gray-500 hover:text-white transition-colors"
-                    aria-label={`Edit ${tx.category} transaction`}
-                  >
-                    <Pencil size={18} />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteTransaction(tx.id)}
-                    className="text-gray-500 hover:text-red-400 transition-colors"
-                    aria-label={`Delete ${tx.category} transaction`}
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                <div className={`font-bold ${tx.amount > 0 ? 'text-green-500' : 'text-white'}`}>
+                  {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
                 </div>
               </div>
-            </div>
-          ))}
-          {filteredList.length === 0 && (
-            <div className="text-center text-gray-600 mt-10">No transactions found</div>
-          )}
+            ))}
+            {periodLogTxs.length === 0 && (
+              <div className="text-center text-gray-600">No transactions found</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="fixed bottom-0 left-0 right-0 border-t border-[#262626] bg-[#121212]/95 backdrop-blur-sm px-6 py-4">
+        <div className="max-w-3xl mx-auto flex gap-3">
+          <button
+            type="button"
+            onClick={() => setViewMode("day")}
+            className={`flex-1 py-3 rounded-full text-sm font-semibold ${
+              viewMode === "day" ? "bg-white text-black" : "bg-[#2a2a2a] text-gray-400"
+            }`}
+          >
+            Day + Log
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("period")}
+            className={`flex-1 py-3 rounded-full text-sm font-semibold ${
+              viewMode === "period" ? "bg-white text-black" : "bg-[#2a2a2a] text-gray-400"
+            }`}
+          >
+            Period Breakdown
+          </button>
         </div>
       </div>
 

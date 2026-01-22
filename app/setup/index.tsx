@@ -34,6 +34,7 @@ export default function SetupWizard() {
   ]);
   const [savingsMode, setSavingsMode] = useState<"percent" | "fixed">("percent");
   const [savingsValue, setSavingsValue] = useState<string>("20");
+  const [rolloverUnspent, setRolloverUnspent] = useState(true);
 
   // Helpers
   const addBill = () =>
@@ -60,6 +61,7 @@ export default function SetupWizard() {
       monthlyIncome: parseFloat(monthlyIncome) || 0,
       bills: bills.filter((b) => b.name.trim() !== ""),
       savingsGoal,
+      rolloverUnspent,
     };
 
     await saveConfig(config);
@@ -96,6 +98,28 @@ export default function SetupWizard() {
           keyboardType="numbers-and-punctuation"
           className="w-full bg-borderAlt p-4 rounded-xl text-white text-xl border border-border"
         />
+      </View>
+      <View className="mt-6">
+        <Text className="text-gray-400 mb-2">Rollover unspent budget</Text>
+        <Pressable
+          onPress={() => setRolloverUnspent((prev) => !prev)}
+          className="w-full bg-borderAlt p-4 rounded-xl border border-border flex-row items-center justify-between"
+        >
+          <Text className="text-gray-300 flex-1 mr-3">
+            Unused daily budget carries into remaining days.
+          </Text>
+          <View
+            className={`w-12 h-7 rounded-full p-1 ${
+              rolloverUnspent ? "bg-green-600" : "bg-[#2a2a2a]"
+            }`}
+          >
+            <View
+              className={`w-5 h-5 rounded-full bg-white ${
+                rolloverUnspent ? "ml-5" : "ml-0"
+              }`}
+            />
+          </View>
+        </Pressable>
       </View>
       <Pressable
         disabled={!monthlyIncome}
@@ -250,6 +274,12 @@ export default function SetupWizard() {
             <Text className="text-gray-400">Savings</Text>
             <Text className="text-red-500 font-bold">
               -${saveAmt.toFixed(0)}
+            </Text>
+          </View>
+          <View className="flex-row justify-between">
+            <Text className="text-gray-400">Rollover</Text>
+            <Text className="text-white font-medium">
+              {rolloverUnspent ? "On" : "Off"}
             </Text>
           </View>
           <View className="h-px bg-border my-2" />

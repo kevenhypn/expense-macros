@@ -32,4 +32,5 @@ export type BudgetConfig = {
   monthlyIncome: number;
   bills: Bill[];
   savingsGoal: SavingsGoal;
+  rolloverUnspent?: boolean;
 };
