@@ -10,7 +10,7 @@ export const SetupWizard = () => {
 
   // Form State
   const [monthlyIncome, setMonthlyIncome] = useState<string>("");
-  const [startDate] = useState(getTodayISO());
+  const [startDate, setStartDate] = useState(getTodayISO());
   const [bills, setBills] = useState<Bill[]>([
     { id: "1", name: "Rent", amount: 0 },
     { id: "2", name: "Phone", amount: 0 },
@@ -60,13 +60,22 @@ export const SetupWizard = () => {
           value={monthlyIncome}
           onChange={(e) => setMonthlyIncome(e.target.value)}
           placeholder="e.g. 5000"
-          className="w-full bg-[#2a2a2a] p-4 rounded-xl text-white text-xl border border-[#333] focus:border-orange-500 outline-none"
+          className="w-full bg-[#2a2a2a] p-4 rounded-xl text-white text-xl border border-[#333] focus:border-green-500 outline-none"
+        />
+      </div>
+      <div>
+        <label className="block text-gray-400 mb-2">Period start date</label>
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="w-full bg-[#2a2a2a] p-4 rounded-xl text-white text-xl border border-[#333] focus:border-green-500 outline-none"
         />
       </div>
       <button 
         disabled={!monthlyIncome}
         onClick={() => setStep(2)} 
-        className="w-full bg-orange-600 p-4 rounded-xl font-bold text-white mt-8 disabled:opacity-50">
+        className="w-full bg-green-600 p-4 rounded-xl font-bold text-white mt-8 disabled:opacity-50">
         Next
       </button>
     </div>
@@ -97,11 +106,11 @@ export const SetupWizard = () => {
             </button>
           </div>
         ))}
-        <button onClick={addBill} className="flex items-center gap-2 text-orange-500 font-medium p-2">
+        <button onClick={addBill} className="flex items-center gap-2 text-green-500 font-medium p-2">
           <Plus size={18} /> Add Bill
         </button>
       </div>
-      <button onClick={() => setStep(3)} className="w-full bg-orange-600 p-4 rounded-xl font-bold text-white">
+      <button onClick={() => setStep(3)} className="w-full bg-green-600 p-4 rounded-xl font-bold text-white">
         Next
       </button>
     </div>
@@ -113,13 +122,13 @@ export const SetupWizard = () => {
       <div className="flex bg-[#2a2a2a] p-1 rounded-lg">
         <button
           onClick={() => setSavingsMode("percent")}
-          className={`flex-1 py-2 rounded-md transition ${savingsMode === "percent" ? "bg-orange-600 text-white" : "text-gray-400"}`}
+          className={`flex-1 py-2 rounded-md transition ${savingsMode === "percent" ? "bg-green-600 text-white" : "text-gray-400"}`}
         >
           Percent (%)
         </button>
         <button
           onClick={() => setSavingsMode("fixed")}
-          className={`flex-1 py-2 rounded-md transition ${savingsMode === "fixed" ? "bg-orange-600 text-white" : "text-gray-400"}`}
+          className={`flex-1 py-2 rounded-md transition ${savingsMode === "fixed" ? "bg-green-600 text-white" : "text-gray-400"}`}
         >
           Fixed ($)
         </button>
@@ -130,13 +139,13 @@ export const SetupWizard = () => {
           type="number"
           value={savingsValue}
           onChange={(e) => setSavingsValue(e.target.value)}
-          className="w-full bg-[#2a2a2a] p-4 rounded-xl text-white text-xl border border-[#333] focus:border-orange-500 outline-none"
+          className="w-full bg-[#2a2a2a] p-4 rounded-xl text-white text-xl border border-[#333] focus:border-green-500 outline-none"
         />
         <p className="text-gray-500 mt-2">
           Approximated savings: <span className="text-green-500 font-bold">${getSavingsAmount().toFixed(0)}</span>
         </p>
       </div>
-      <button onClick={() => setStep(4)} className="w-full bg-orange-600 p-4 rounded-xl font-bold text-white mt-8">
+      <button onClick={() => setStep(4)} className="w-full bg-green-600 p-4 rounded-xl font-bold text-white mt-8">
         Next
       </button>
     </div>
@@ -158,6 +167,10 @@ export const SetupWizard = () => {
             <span className="text-green-500 font-bold">+${inc}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-400">Period Start</span>
+            <span className="text-white font-medium">{startDate}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-400">Bills Total</span>
             <span className="text-red-500 font-bold">-${billsTotal}</span>
           </div>
@@ -168,7 +181,7 @@ export const SetupWizard = () => {
           <div className="h-px bg-[#333] my-2"></div>
           <div className="flex justify-between text-lg">
             <span className="text-white">Available to Spend</span>
-            <span className="text-orange-500 font-bold">${available.toFixed(0)}</span>
+            <span className="text-green-500 font-bold">${available.toFixed(0)}</span>
           </div>
         </div>
         <button onClick={handleSave} className="w-full bg-green-600 p-4 rounded-xl font-bold text-white mt-8 flex justify-center items-center gap-2">

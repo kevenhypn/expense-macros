@@ -85,42 +85,42 @@ export const CATEGORY_TEXT_COLORS: Record<
 > = {
   Food: {
     selected: "text-white",
-    unselected: "text-[#cda57a]",
+    unselected: "text-black",
     badge: "text-[#cda57a]",
   },
   Bills: {
     selected: "text-white",
-    unselected: "text-red-400",
+    unselected: "text-black",
     badge: "text-red-400",
   },
   Savings: {
     selected: "text-white",
-    unselected: "text-green-400",
+    unselected: "text-black",
     badge: "text-green-400",
   },
   Shopping: {
     selected: "text-white",
-    unselected: "text-purple-400",
+    unselected: "text-black",
     badge: "text-purple-400",
   },
   Transport: {
     selected: "text-black",
-    unselected: "text-yellow-300",
+    unselected: "text-black",
     badge: "text-yellow-300",
   },
   Entertainment: {
     selected: "text-white",
-    unselected: "text-blue-400",
+    unselected: "text-black",
     badge: "text-blue-400",
   },
   Other: {
     selected: "text-white",
-    unselected: "text-gray-400",
+    unselected: "text-black",
     badge: "text-gray-400",
   },
   Income: {
     selected: "text-white",
-    unselected: "text-green-500",
+    unselected: "text-black",
     badge: "text-green-500",
   },
 };

@@ -26,7 +26,7 @@ export default function SetupWizard() {
 
   // Form State
   const [monthlyIncome, setMonthlyIncome] = useState<string>("");
-  const [startDate] = useState(getTodayISO());
+  const [startDate, setStartDate] = useState(getTodayISO());
   const [bills, setBills] = useState<Bill[]>([
     { id: "1", name: "Rent", amount: 0 },
     { id: "2", name: "Phone", amount: 0 },
@@ -86,10 +86,21 @@ export default function SetupWizard() {
           className="w-full bg-borderAlt p-4 rounded-xl text-white text-xl border border-border"
         />
       </View>
+      <View className="mt-6">
+        <Text className="text-gray-400 mb-2">Period start date</Text>
+        <TextInput
+          value={startDate}
+          onChangeText={setStartDate}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#6b7280"
+          keyboardType="numbers-and-punctuation"
+          className="w-full bg-borderAlt p-4 rounded-xl text-white text-xl border border-border"
+        />
+      </View>
       <Pressable
         disabled={!monthlyIncome}
         onPress={() => setStep(2)}
-        className={`w-full bg-orange-600 p-4 rounded-xl mt-8 items-center ${
+        className={`w-full bg-green-600 p-4 rounded-xl mt-8 items-center ${
           !monthlyIncome ? "opacity-50" : "opacity-100"
         }`}
       >
@@ -137,13 +148,13 @@ export default function SetupWizard() {
           onPress={addBill}
           className="flex-row items-center gap-2 p-2 mt-3"
         >
-          <Plus size={18} color="#f97316" />
-          <Text className="text-orange-500 font-medium">Add Bill</Text>
+          <Plus size={18} color="#22c55e" />
+          <Text className="text-green-500 font-medium">Add Bill</Text>
         </Pressable>
       </ScrollView>
       <Pressable
         onPress={() => setStep(3)}
-        className="w-full bg-orange-600 p-4 rounded-xl items-center"
+        className="w-full bg-green-600 p-4 rounded-xl items-center"
       >
         <Text className="font-bold text-white">Next</Text>
       </Pressable>
@@ -160,7 +171,7 @@ export default function SetupWizard() {
         <Pressable
           onPress={() => setSavingsMode("percent")}
           className={`flex-1 py-2 rounded-md items-center ${
-            savingsMode === "percent" ? "bg-orange-600" : ""
+            savingsMode === "percent" ? "bg-green-600" : ""
           }`}
         >
           <Text
@@ -174,7 +185,7 @@ export default function SetupWizard() {
         <Pressable
           onPress={() => setSavingsMode("fixed")}
           className={`flex-1 py-2 rounded-md items-center ${
-            savingsMode === "fixed" ? "bg-orange-600" : ""
+            savingsMode === "fixed" ? "bg-green-600" : ""
           }`}
         >
           <Text
@@ -203,7 +214,7 @@ export default function SetupWizard() {
       </View>
       <Pressable
         onPress={() => setStep(4)}
-        className="w-full bg-orange-600 p-4 rounded-xl mt-8 items-center"
+        className="w-full bg-green-600 p-4 rounded-xl mt-8 items-center"
       >
         <Text className="font-bold text-white">Next</Text>
       </Pressable>
@@ -228,6 +239,10 @@ export default function SetupWizard() {
             <Text className="text-green-500 font-bold">+${inc}</Text>
           </View>
           <View className="flex-row justify-between">
+            <Text className="text-gray-400">Period Start</Text>
+            <Text className="text-white font-medium">{startDate}</Text>
+          </View>
+          <View className="flex-row justify-between">
             <Text className="text-gray-400">Bills Total</Text>
             <Text className="text-red-500 font-bold">-${billsTotal}</Text>
           </View>
@@ -240,7 +255,7 @@ export default function SetupWizard() {
           <View className="h-px bg-border my-2" />
           <View className="flex-row justify-between">
             <Text className="text-white text-lg">Available to Spend</Text>
-            <Text className="text-orange-500 font-bold text-lg">
+            <Text className="text-green-500 font-bold text-lg">
               ${available.toFixed(0)}
             </Text>
           </View>

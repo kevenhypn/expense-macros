@@ -6,6 +6,7 @@ interface SummaryCardProps {
   mainIsPositive: boolean;
   subValue: string; // The total
   footerText: string;
+  children?: React.ReactNode;
 }
 
 export const SummaryCard: React.FC<SummaryCardProps> = ({
@@ -14,6 +15,7 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
   mainIsPositive,
   subValue,
   footerText,
+  children,
 }) => {
   return (
     <div className="bg-[#1e1e1e] border border-[#333] rounded-3xl p-5 shadow-inner flex flex-col gap-2">
@@ -31,6 +33,11 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
         <span className="text-gray-500 text-sm font-medium">{subValue}</span>
       </div>
       <div className="text-xs text-gray-500 mt-1">{footerText}</div>
+      {children ? (
+        <div className="mt-4 pt-4 border-t border-[#333] space-y-3">
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 };
