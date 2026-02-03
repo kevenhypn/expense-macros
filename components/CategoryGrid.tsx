@@ -17,12 +17,19 @@ const CATEGORIES: TransactionCategory[] = [
 interface Props {
   selected: TransactionCategory;
   onSelect: (c: TransactionCategory) => void;
+  allowedCategories?: TransactionCategory[];
 }
 
-export const CategoryGrid: React.FC<Props> = ({ selected, onSelect }) => {
+export const CategoryGrid: React.FC<Props> = ({
+  selected,
+  onSelect,
+  allowedCategories,
+}) => {
+  const categories = allowedCategories ?? CATEGORIES;
+
   return (
     <View className="flex-row flex-wrap gap-2 mb-6">
-      {CATEGORIES.map((cat) => {
+      {categories.map((cat) => {
         const isSelected = selected === cat;
         const styles = CATEGORY_STYLES[cat];
         const textStyle = isSelected

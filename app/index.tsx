@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  Vibration,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -65,6 +66,38 @@ export default function Dashboard() {
   const [editNote, setEditNote] = useState("");
   const [editCategory, setEditCategory] =
     useState<TransactionCategory>("Food");
+  const [pendingDelete, setPendingDelete] = useState<{
+    tx: Transaction;
+    previousTxs: Transaction[];
+    nextTxs: Transaction[];
+  } | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const spendingCategories = [
+    "Food",
+    "Shopping",
+    "Transport",
+    "Entertainment",
+    "Other",
+  ] as const;
+  type SpendingCategory = (typeof spendingCategories)[number];
+  const expenseCategories = [
+    "Bills",
+    "Savings",
+    "Food",
+    "Shopping",
+    "Transport",
+    "Entertainment",
+    "Other",
+  ] as const;
+  type ExpenseCategory = (typeof expenseCategories)[number];
+  const reimbursementCategories: TransactionCategory[] = [
+    ...spendingCategories,
+  ];
+  const isSpendingCategory = (
+    category: TransactionCategory
+  ): category is SpendingCategory =>
+    !["Bills", "Savings", "Income"].includes(category);
 
   // Redirect to setup if no config
   useEffect(() => {
@@ -72,6 +105,22 @@ export default function Dashboard() {
       router.replace("/setup");
     }
   }, [isLoading, config, router]);
+
+  useEffect(() => {
+    if (!isIncome) return;
+    if (!isSpendingCategory(selectedCat)) {
+      setSelectedCat("Other");
+    }
+  }, [isIncome, selectedCat]);
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) {
+        clearTimeout(deleteTimerRef.current);
+        deleteTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -105,21 +154,29 @@ export default function Dashboard() {
   );
 
   // Discretionary calculation
-  const discretionarySpent = currentMonthTxs.reduce((sum, t) => {
-    if (["Bills", "Savings", "Income"].includes(t.category)) return sum;
-    if (t.amount < 0) return sum + Math.abs(t.amount);
-    return sum;
+  const netDiscretionary = currentMonthTxs.reduce((sum, t) => {
+    if (!isSpendingCategory(t.category)) return sum;
+    return sum + t.amount;
+  }, 0);
+  const discretionarySpent = Math.max(0, -netDiscretionary);
+  const totalIncome = currentMonthTxs.reduce((sum, t) => {
+    if (t.category !== "Income") return sum;
+    if (t.amount <= 0) return sum;
+    return sum + t.amount;
   }, 0);
 
   const incomeAdjustments = currentMonthTxs.reduce((sum, t) => {
     if (t.isSystem) return sum;
+    if (t.category !== "Income") return sum;
     if (t.amount <= 0) return sum;
-    return sum + Math.abs(t.amount);
+    return sum + t.amount;
   }, 0);
 
   const availableToSpend = baseAvailableToSpend + incomeAdjustments;
-  const periodLeft = availableToSpend - discretionarySpent;
+  const periodLeft = availableToSpend + netDiscretionary;
   const daysPassed = selectedDate.getDate();
+  const pctOfIncome = (amount: number) =>
+    totalIncome > 0 ? (amount / totalIncome) * 100 : 0;
 
   // Today's Budget Logic
   const dim = daysInMonth(selectedDateISO);
@@ -129,12 +186,10 @@ export default function Dashboard() {
   const selectedDayTxs = currentMonthTxs.filter(
     (t) => t.date === selectedDateISO
   );
-  const spendingByDate = currentMonthTxs.reduce(
+  const netSpendingByDate = currentMonthTxs.reduce(
     (acc, t) => {
-      if (["Bills", "Savings", "Income"].includes(t.category)) return acc;
-      if (t.amount < 0) {
-        acc[t.date] = (acc[t.date] ?? 0) + Math.abs(t.amount);
-      }
+      if (!isSpendingCategory(t.category)) return acc;
+      acc[t.date] = (acc[t.date] ?? 0) + t.amount;
       return acc;
     },
     {} as Record<string, number>
@@ -149,7 +204,7 @@ export default function Dashboard() {
       const remainingDays = dim - day + 1;
       const dayBudget = remainingBudget / remainingDays;
       const dateISO = `${monthPrefix}-${String(day).padStart(2, "0")}`;
-      const spent = spendingByDate[dateISO] ?? 0;
+      const spent = -(netSpendingByDate[dateISO] ?? 0);
       if (spent > dayBudget) overspentDays += 1;
       if (day === selectedDay) dailyBudget = dayBudget;
       remainingBudget -= spent;
@@ -157,31 +212,27 @@ export default function Dashboard() {
   } else {
     for (let day = 1; day <= dim; day += 1) {
       const dateISO = `${monthPrefix}-${String(day).padStart(2, "0")}`;
-      const spent = spendingByDate[dateISO] ?? 0;
+      const spent = -(netSpendingByDate[dateISO] ?? 0);
       if (spent > baseDailyBudget) overspentDays += 1;
     }
   }
 
   const todayTxs = selectedDayTxs;
-  const todaySpent = todayTxs.reduce((sum, t) => {
-    if (["Bills", "Savings", "Income"].includes(t.category)) return sum;
-    if (t.amount < 0) return sum + Math.abs(t.amount);
-    return sum;
+  const todayNet = todayTxs.reduce((sum, t) => {
+    if (!isSpendingCategory(t.category)) return sum;
+    return sum + t.amount;
+  }, 0);
+  const todaySpent = -todayNet;
+  const todayReimbursed = todayTxs.reduce((sum, t) => {
+    if (!isSpendingCategory(t.category)) return sum;
+    if (t.amount <= 0) return sum;
+    return sum + t.amount;
   }, 0);
 
   const todayLeft = dailyBudget - todaySpent;
 
-  const spendingCategories = [
-    "Food",
-    "Shopping",
-    "Transport",
-    "Entertainment",
-    "Other",
-  ] as const;
-  type SpendingCategory = (typeof spendingCategories)[number];
-
   const buildSpendingTotals = (txs: Transaction[]) => {
-    const totals: Record<SpendingCategory, number> = {
+    const netTotals: Record<SpendingCategory, number> = {
       Food: 0,
       Shopping: 0,
       Transport: 0,
@@ -190,10 +241,39 @@ export default function Dashboard() {
     };
 
     txs.forEach((t) => {
-      if (t.amount >= 0) return;
       if (!spendingCategories.includes(t.category as SpendingCategory)) return;
-      totals[t.category as SpendingCategory] += Math.abs(t.amount);
+      netTotals[t.category as SpendingCategory] += t.amount;
     });
+
+    const totals = spendingCategories.reduce((acc, cat) => {
+      acc[cat] = Math.max(0, -netTotals[cat]);
+      return acc;
+    }, {} as Record<SpendingCategory, number>);
+
+    const totalSpent = Object.values(totals).reduce((sum, val) => sum + val, 0);
+    return { totals, totalSpent };
+  };
+
+  const buildExpenseTotals = (txs: Transaction[]) => {
+    const netTotals: Record<ExpenseCategory, number> = {
+      Bills: 0,
+      Savings: 0,
+      Food: 0,
+      Shopping: 0,
+      Transport: 0,
+      Entertainment: 0,
+      Other: 0,
+    };
+
+    txs.forEach((t) => {
+      if (!expenseCategories.includes(t.category as ExpenseCategory)) return;
+      netTotals[t.category as ExpenseCategory] += t.amount;
+    });
+
+    const totals = expenseCategories.reduce((acc, cat) => {
+      acc[cat] = Math.max(0, -netTotals[cat]);
+      return acc;
+    }, {} as Record<ExpenseCategory, number>);
 
     const totalSpent = Object.values(totals).reduce((sum, val) => sum + val, 0);
     return { totals, totalSpent };
@@ -201,14 +281,13 @@ export default function Dashboard() {
 
   const periodSpending = buildSpendingTotals(currentMonthTxs);
   const todaySpending = buildSpendingTotals(todayTxs);
+  const fullExpenses = buildExpenseTotals(currentMonthTxs);
 
   const periodLogTxs = [...currentMonthTxs].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
-  const todaySpendingTxs = todayTxs.filter(
-    (t) =>
-      t.amount < 0 &&
-      spendingCategories.includes(t.category as SpendingCategory)
+  const todaySpendingTxs = todayTxs.filter((t) =>
+    spendingCategories.includes(t.category as SpendingCategory)
   );
 
   // --- Handlers ---
@@ -217,11 +296,14 @@ export default function Dashboard() {
     const val = parseFloat(amount);
     if (!val || isNaN(val)) return;
 
+    const safeCategory =
+      isIncome && !isSpendingCategory(selectedCat) ? "Other" : selectedCat;
+
     const newTx: Transaction = {
       id: generateId(),
       date: selectedDateISO,
       amount: isIncome ? Math.abs(val) : -Math.abs(val),
-      category: selectedCat,
+      category: safeCategory,
       note: note,
       isSystem: false,
     };
@@ -229,6 +311,7 @@ export default function Dashboard() {
     const newTxs = [newTx, ...transactions];
     setTransactions(newTxs);
     await saveTransactions(newTxs);
+    Vibration.vibrate(10);
 
     // Reset form
     setAmount("");
@@ -236,9 +319,27 @@ export default function Dashboard() {
   };
 
   const handleDeleteTransaction = async (id: string) => {
+    const txToDelete = transactions.find((tx) => tx.id === id);
+    if (!txToDelete) return;
+
+    // Finalize any existing pending delete immediately.
+    if (deleteTimerRef.current && pendingDelete) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+      await saveTransactions(pendingDelete.nextTxs);
+      setPendingDelete(null);
+    }
+
     const nextTxs = transactions.filter((tx) => tx.id !== id);
     setTransactions(nextTxs);
-    await saveTransactions(nextTxs);
+    setPendingDelete({ tx: txToDelete, previousTxs: transactions, nextTxs });
+    Vibration.vibrate(10);
+
+    deleteTimerRef.current = setTimeout(async () => {
+      await saveTransactions(nextTxs);
+      setPendingDelete(null);
+      deleteTimerRef.current = null;
+    }, 5000);
   };
 
   const handleStartEdit = (tx: Transaction) => {
@@ -277,7 +378,19 @@ export default function Dashboard() {
 
     setTransactions(nextTxs);
     await saveTransactions(nextTxs);
+    Vibration.vibrate(10);
     handleCancelEdit();
+  };
+
+  const handleUndoDelete = async () => {
+    if (!pendingDelete) return;
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setTransactions(pendingDelete.previousTxs);
+    await saveTransactions(pendingDelete.previousTxs);
+    setPendingDelete(null);
   };
 
   // Filter Logic
@@ -431,6 +544,18 @@ export default function Dashboard() {
                     >
                       {expandedCard === "today" && (
                         <View className="gap-3">
+                          <View className="flex-row gap-2">
+                            <View className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
+                              <Text className="text-xs text-gray-300">
+                                Net today: ${todayNet.toFixed(0)}
+                              </Text>
+                            </View>
+                            <View className="px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20">
+                              <Text className="text-xs text-emerald-200">
+                                Reimbursed: ${todayReimbursed.toFixed(0)}
+                              </Text>
+                            </View>
+                          </View>
                           <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">
                             Today's spending
                           </Text>
@@ -659,9 +784,14 @@ export default function Dashboard() {
                     </View>
                   ))}
                   {filteredList.length === 0 && (
-                    <Text className="text-center text-gray-600 mt-10">
-                      No transactions found
-                    </Text>
+                    <View className="items-center mt-10 gap-2">
+                      <Text className="text-center text-gray-600">
+                        No transactions found
+                      </Text>
+                      <Text className="text-center text-gray-500 text-xs">
+                        Tap Add to create your first transaction.
+                      </Text>
+                    </View>
                   )}
                 </View>
               </Animated.View>
@@ -707,6 +837,44 @@ export default function Dashboard() {
                     </Text>
                   </View>
                 </View>
+              </View>
+
+              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
+                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                  Full category breakdown
+                </Text>
+                {fullExpenses.totalSpent === 0 ? (
+                  <Text className="text-xs text-gray-500">
+                    No expenses yet for this period.
+                  </Text>
+                ) : (
+                  <View className="gap-4">
+                    {expenseCategories.map((cat) => {
+                      const spent = fullExpenses.totals[cat];
+                      if (spent <= 0) return null;
+                      const pct = pctOfIncome(spent);
+                      return (
+                        <View key={cat} className="gap-2">
+                          <View className="flex-row justify-between">
+                            <Text className="text-sm text-white">{cat}</Text>
+                            <Text className="text-xs text-gray-500">
+                              {pct.toFixed(0)}% • ${spent.toFixed(0)}
+                            </Text>
+                          </View>
+                          <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                            <View
+                              style={{
+                                width: `${Math.min(100, pct)}%`,
+                                backgroundColor: CATEGORY_STYLES[cat].selectedBg,
+                              }}
+                              className="h-2"
+                            />
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
 
               <View className="bg-card border border-border rounded-3xl p-5 gap-3">
@@ -940,6 +1108,9 @@ export default function Dashboard() {
                   <CategoryGrid
                     selected={selectedCat}
                     onSelect={setSelectedCat}
+                    allowedCategories={
+                      isIncome ? reimbursementCategories : undefined
+                    }
                   />
                   <TextInput
                     placeholder="Note (optional)"
@@ -969,6 +1140,17 @@ export default function Dashboard() {
           </KeyboardAvoidingView>
         </Modal>
       </KeyboardAvoidingView>
+
+      {pendingDelete && (
+        <View className="absolute bottom-6 left-6 right-6 rounded-2xl bg-[#1a1a1a] border border-border px-4 py-3 flex-row items-center justify-between">
+          <Text className="text-sm text-gray-200">
+            Deleted {pendingDelete.tx.category}
+          </Text>
+          <Pressable onPress={handleUndoDelete} className="px-3 py-1">
+            <Text className="text-sm text-blue-400 font-semibold">Undo</Text>
+          </Pressable>
+        </View>
+      )}
 
       {showDatePicker &&
         (Platform.OS === "ios" ? (
