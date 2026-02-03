@@ -15,7 +15,14 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { Settings, RefreshCw, Trash2, Pencil } from "lucide-react-native";
+import {
+  Settings,
+  RefreshCw,
+  Trash2,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react-native";
 import { Transaction, TransactionCategory } from "../types";
 import {
   saveTransactions,
@@ -43,11 +50,12 @@ export default function Dashboard() {
   const [isIncome, setIsIncome] = useState(false);
   const [selectedCat, setSelectedCat] = useState<TransactionCategory>("Food");
   const [note, setNote] = useState("");
-  const [filter, setFilter] = useState<FilterType>("All");
+  const [filter] = useState<FilterType>("All");
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCard, setExpandedCard] = useState<"period" | "today" | null>(
     null
   );
+  const [showAddCard, setShowAddCard] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "period">("day");
   const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -307,7 +315,6 @@ export default function Dashboard() {
   };
 
   const filteredList = getFilteredTransactions();
-  const filters: FilterType[] = ["All", "Spending", "Bills", "Savings", "Income"];
 
   const handleDateChange = (_: unknown, date?: Date) => {
     if (Platform.OS === "android") {
@@ -316,6 +323,13 @@ export default function Dashboard() {
     if (date) {
       setSelectedDateISO(date.toLocaleDateString("en-CA"));
     }
+  };
+
+  const shiftSelectedDate = (days: number) => {
+    const base = new Date(`${selectedDateISO}T00:00:00`);
+    const next = new Date(base);
+    next.setDate(base.getDate() + days);
+    setSelectedDateISO(next.toLocaleDateString("en-CA"));
   };
 
   return (
@@ -338,12 +352,33 @@ export default function Dashboard() {
         >
           {/* Header */}
           <View className="p-6 flex-row justify-between items-center">
-            <Pressable onPress={() => setShowDatePicker(true)} className="gap-1">
-              <Text className="text-3xl font-bold text-white">
-                {selectedDateLabel}
-              </Text>
+            <View className="gap-1">
+              <View className="flex-row items-center gap-2">
+                <Pressable
+                  onPress={() => shiftSelectedDate(-1)}
+                  className="py-1"
+                  hitSlop={10}
+                >
+                  <ChevronLeft size={18} color="#6b7280" />
+                </Pressable>
+                <Pressable
+                  onPress={() => setShowDatePicker(true)}
+                  className="flex-row items-center"
+                >
+                  <Text className="text-3xl font-bold text-white">
+                    {selectedDateLabel}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => shiftSelectedDate(1)}
+                  className="py-1"
+                  hitSlop={10}
+                >
+                  <ChevronRight size={18} color="#6b7280" />
+                </Pressable>
+              </View>
               <Text className="text-xs text-gray-400">Tap to change</Text>
-            </Pressable>
+            </View>
             <View className="flex-row gap-4">
               <Pressable onPress={onRefresh} className="p-2">
                 <RefreshCw size={24} color="#9ca3af" />
@@ -361,9 +396,9 @@ export default function Dashboard() {
               {/* Summary Cards */}
               <Animated.View
                 entering={FadeInDown.duration(300).delay(100)}
-                className="px-6 flex-col gap-4 mb-6"
+                className="px-6 flex-col-reverse gap-4 mb-6"
               >
-                <View className="opacity-70">
+                <View className="opacity-50">
                   <Pressable
                     onPress={() => {
                       setExpandedCard(null);
@@ -520,31 +555,26 @@ export default function Dashboard() {
                 entering={FadeInDown.duration(300).delay(200)}
                 className="px-6 mb-8"
               >
-                <AmountToggle
-                  amount={amount}
-                  setAmount={setAmount}
-                  isIncome={isIncome}
-                  setIsIncome={setIsIncome}
-                />
-                <CategoryGrid selected={selectedCat} onSelect={setSelectedCat} />
-
-                <TextInput
-                  placeholder="Note (optional)"
-                  placeholderTextColor="#6b7280"
-                  value={note}
-                  onChangeText={setNote}
-                  className="w-full border-b border-border pb-2 mb-6 text-gray-400"
-                />
-
                 <Pressable
-                  onPress={handleAddTransaction}
-                  className={`w-full py-4 rounded-2xl shadow-lg items-center ${
-                    isIncome ? "bg-green-600" : "bg-red-600"
-                  }`}
+                  onPress={() => setShowAddCard(true)}
+                  className="w-full rounded-3xl border border-[#2f2f2f] bg-[#1a1a1a] p-4 flex-row items-center justify-between"
                 >
-                  <Text className="text-white font-bold text-base">
-                    Add Transaction
-                  </Text>
+                  <View className="flex-row items-center gap-3">
+                    <View className="w-1 h-12 rounded-full bg-emerald-400/80" />
+                    <View className="gap-1">
+                      <Text className="text-white font-semibold text-base">
+                      Add transaction
+                      </Text>
+                      <Text className="text-xs text-gray-400">
+                        Tap to enter amount and details
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="h-10 px-4 rounded-full bg-emerald-400/15 items-center justify-center border border-emerald-400/30">
+                    <Text className="text-emerald-200 font-semibold">
+                      Amount
+                    </Text>
+                  </View>
                 </Pressable>
               </Animated.View>
 
@@ -553,25 +583,13 @@ export default function Dashboard() {
                 entering={FadeInDown.duration(300).delay(300)}
                 className="bg-cardAlt rounded-t-3xl min-h-[400px] p-6"
               >
-                {/* Filter Tabs */}
-                <View className="flex-row gap-3 mb-6 pb-2">
-                  {filters.map((f) => (
-                    <Pressable
-                      key={f}
-                      onPress={() => setFilter(f)}
-                      className={`px-4 py-2 rounded-full ${
-                        filter === f ? "bg-white" : "bg-[#2a2a2a]"
-                      }`}
-                    >
-                      <Text
-                        className={`text-sm font-medium ${
-                          filter === f ? "text-black" : "text-gray-400"
-                        }`}
-                      >
-                        {f}
-                      </Text>
-                    </Pressable>
-                  ))}
+                <View className="flex-row items-end justify-between mb-6">
+                  <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                    {selectedDateLabel} transactions
+                  </Text>
+                  <Text className="text-xs text-gray-500">
+                    {filteredList.length} total
+                  </Text>
                 </View>
 
                 {/* Transaction List */}
@@ -792,31 +810,32 @@ export default function Dashboard() {
           )}
         </ScrollView>
 
-        <View className="border-t border-border bg-background px-6 pt-3 pb-6">
-          <View className="flex-row gap-3">
+        <View className="border-t border-border bg-background">
+          <View className="flex-row items-stretch">
             <Pressable
               onPress={() => setViewMode("day")}
-              className={`flex-1 py-3 rounded-full items-center ${
-                viewMode === "day" ? "bg-white" : "bg-[#2a2a2a]"
+              className={`flex-1 py-4 items-center ${
+                viewMode === "day" ? "bg-white/10" : "bg-transparent"
               }`}
             >
               <Text
                 className={`text-sm font-semibold ${
-                  viewMode === "day" ? "text-black" : "text-gray-400"
+                  viewMode === "day" ? "text-white" : "text-gray-500"
                 }`}
               >
                 Day + Log
               </Text>
             </Pressable>
+            <View className="w-px bg-border" />
             <Pressable
               onPress={() => setViewMode("period")}
-              className={`flex-1 py-3 rounded-full items-center ${
-                viewMode === "period" ? "bg-white" : "bg-[#2a2a2a]"
+              className={`flex-1 py-4 items-center ${
+                viewMode === "period" ? "bg-white/10" : "bg-transparent"
               }`}
             >
               <Text
                 className={`text-sm font-semibold ${
-                  viewMode === "period" ? "text-black" : "text-gray-400"
+                  viewMode === "period" ? "text-white" : "text-gray-500"
                 }`}
               >
                 Period Breakdown
@@ -881,6 +900,74 @@ export default function Dashboard() {
             </View>
           </View>
         </Modal>
+
+        <Modal
+          transparent
+          animationType="fade"
+          visible={showAddCard}
+          onRequestClose={() => setShowAddCard(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <Pressable
+              className="flex-1 bg-black/60 justify-end px-6 pb-8"
+              onPress={() => setShowAddCard(false)}
+            >
+              <Pressable
+                className="bg-background border border-border rounded-3xl p-5 gap-4"
+                onPress={() => {}}
+              >
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-xs text-gray-400 uppercase tracking-wider">
+                    New transaction
+                  </Text>
+                  <Pressable onPress={() => setShowAddCard(false)}>
+                    <Text className="text-xs text-gray-400">Close</Text>
+                  </Pressable>
+                </View>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ gap: 16, paddingBottom: 8 }}
+                >
+                  <AmountToggle
+                    amount={amount}
+                    setAmount={setAmount}
+                    isIncome={isIncome}
+                    setIsIncome={setIsIncome}
+                  />
+                  <CategoryGrid
+                    selected={selectedCat}
+                    onSelect={setSelectedCat}
+                  />
+                  <TextInput
+                    placeholder="Note (optional)"
+                    placeholderTextColor="#6b7280"
+                    value={note}
+                    onChangeText={setNote}
+                    className="w-full border-b border-border pb-2 text-gray-400"
+                  />
+                  <Pressable
+                    onPress={async () => {
+                      const val = parseFloat(amount);
+                      if (!val || isNaN(val)) return;
+                      await handleAddTransaction();
+                      setShowAddCard(false);
+                    }}
+                    className={`w-full py-4 rounded-2xl shadow-lg items-center ${
+                      isIncome ? "bg-green-600" : "bg-red-600"
+                    }`}
+                  >
+                    <Text className="text-white font-bold text-base">
+                      Add Transaction
+                    </Text>
+                  </Pressable>
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Modal>
       </KeyboardAvoidingView>
 
       {showDatePicker &&
@@ -910,7 +997,7 @@ export default function Dashboard() {
                 <DateTimePicker
                   value={selectedDate}
                   mode="date"
-                  display="spinner"
+                  display="inline"
                   onChange={handleDateChange}
                 />
               </Pressable>

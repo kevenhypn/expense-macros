@@ -14,7 +14,14 @@ import {
 import { SummaryCard } from "../components/SummaryCard";
 import { AmountToggle } from "../components/AmountToggle";
 import { CategoryGrid } from "../components/CategoryGrid";
-import { Settings, RefreshCw, Trash2, Pencil } from "lucide-react";
+import {
+  Settings,
+  RefreshCw,
+  Trash2,
+  Pencil,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { CATEGORY_STYLES } from "../lib/categoryStyles";
 
 export const Dashboard = () => {
@@ -27,8 +34,9 @@ export const Dashboard = () => {
   const [isIncome, setIsIncome] = useState(false); // Default OUT
   const [selectedCat, setSelectedCat] = useState<TransactionCategory>("Food");
   const [note, setNote] = useState("");
-  const [filter, setFilter] = useState<"All" | "Spending" | "Bills" | "Savings" | "Income">("All");
+  const [filter] = useState<"All" | "Spending" | "Bills" | "Savings" | "Income">("All");
   const [expandedCard, setExpandedCard] = useState<"period" | "today" | null>(null);
+  const [showAddCard, setShowAddCard] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "period">("day");
   const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -263,13 +271,37 @@ export const Dashboard = () => {
   };
 
   const filteredList = getFilteredTransactions();
+  const shiftSelectedDate = (days: number) => {
+    const base = new Date(`${selectedDateISO}T00:00:00`);
+    const next = new Date(base);
+    next.setDate(base.getDate() + days);
+    setSelectedDateISO(next.toLocaleDateString("en-CA"));
+  };
 
   return (
     <div className="min-h-screen bg-[#121212] text-white pb-32">
       {/* Header */}
       <div className="p-6 flex justify-between items-center sticky top-0 bg-[#121212]/95 backdrop-blur-sm z-10">
         <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-bold">{selectedDateLabel}</h1>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => shiftSelectedDate(-1)}
+              className="py-1 text-gray-500 hover:text-white"
+              aria-label="Previous day"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <h1 className="text-3xl font-bold">{selectedDateLabel}</h1>
+            <button
+              type="button"
+              onClick={() => shiftSelectedDate(1)}
+              className="py-1 text-gray-500 hover:text-white"
+              aria-label="Next day"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
           <input
             type="date"
             value={selectedDateISO}
@@ -291,8 +323,8 @@ export const Dashboard = () => {
       {viewMode === "day" ? (
         <>
           {/* Summary Cards */}
-          <div className="px-6 flex flex-col gap-4 mb-6">
-            <div className="opacity-70">
+          <div className="px-6 flex flex-col-reverse gap-4 mb-6">
+            <div className="opacity-50">
               <button
                 type="button"
                 onClick={() => {
@@ -411,44 +443,37 @@ export const Dashboard = () => {
 
           {/* Add Transaction Form */}
           <div className="px-6 mb-8">
-            <AmountToggle
-              amount={amount}
-              setAmount={setAmount}
-              isIncome={isIncome}
-              setIsIncome={setIsIncome}
-            />
-            <CategoryGrid selected={selectedCat} onSelect={setSelectedCat} />
-            
-            <input 
-              type="text" 
-              placeholder="Note (optional)" 
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full bg-transparent border-b border-[#333] pb-2 mb-6 text-gray-400 focus:outline-none focus:border-green-500"
-            />
-
             <button
-              onClick={handleAddTransaction}
-              className={`w-full text-white font-bold py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-transform ${
-                isIncome ? "bg-green-600 shadow-green-900/20" : "bg-red-600 shadow-red-900/20"
-              }`}
+              type="button"
+              onClick={() => setShowAddCard(true)}
+              className="w-full rounded-3xl border border-[#2f2f2f] bg-[#1a1a1a] p-4 flex items-center justify-between shadow-[0_10px_30px_rgba(0,0,0,0.35)]"
             >
-              Add Transaction
+              <div className="flex items-center gap-3">
+                <div className="w-1 h-12 rounded-full bg-emerald-400/80" />
+                <div className="flex flex-col items-start gap-1">
+                  <div className="text-white font-semibold text-base">
+                    Add transaction
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    Tap to enter amount and details
+                  </div>
+                </div>
+              </div>
+              <div className="h-10 px-4 rounded-full bg-emerald-400/15 border border-emerald-400/30 flex items-center justify-center text-emerald-200 font-semibold">
+                Amount
+              </div>
             </button>
           </div>
 
           {/* Log Section */}
           <div className="bg-[#1a1a1a] rounded-t-3xl min-h-[400px] p-6 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
-            <div className="flex gap-4 mb-6 overflow-x-auto pb-2 no-scrollbar">
-              {["All", "Spending", "Bills", "Savings", "Income"].map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f as any)}
-                  className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium ${filter === f ? 'bg-white text-black' : 'bg-[#2a2a2a] text-gray-400'}`}
-                >
-                  {f}
-                </button>
-              ))}
+            <div className="flex items-end justify-between mb-6">
+              <div className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                {selectedDateLabel} transactions
+              </div>
+              <div className="text-xs text-gray-500">
+                {filteredList.length} total
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -592,28 +617,81 @@ export const Dashboard = () => {
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 border-t border-[#262626] bg-[#121212]/95 backdrop-blur-sm px-6 py-4">
-        <div className="max-w-3xl mx-auto flex gap-3">
+      <div className="fixed bottom-0 left-0 right-0 border-t border-[#262626] bg-[#121212]/95 backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto flex items-stretch">
           <button
             type="button"
             onClick={() => setViewMode("day")}
-            className={`flex-1 py-3 rounded-full text-sm font-semibold ${
-              viewMode === "day" ? "bg-white text-black" : "bg-[#2a2a2a] text-gray-400"
+            className={`flex-1 py-4 text-sm font-semibold ${
+              viewMode === "day" ? "bg-white/10 text-white" : "text-gray-500"
             }`}
           >
             Day + Log
           </button>
+          <div className="w-px bg-[#2f2f2f]" />
           <button
             type="button"
             onClick={() => setViewMode("period")}
-            className={`flex-1 py-3 rounded-full text-sm font-semibold ${
-              viewMode === "period" ? "bg-white text-black" : "bg-[#2a2a2a] text-gray-400"
+            className={`flex-1 py-4 text-sm font-semibold ${
+              viewMode === "period" ? "bg-white/10 text-white" : "text-gray-500"
             }`}
           >
             Period Breakdown
           </button>
         </div>
       </div>
+
+      {showAddCard && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4 z-40"
+          onClick={() => setShowAddCard(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-[#121212] border border-[#333] rounded-3xl p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-gray-400 uppercase tracking-wider">
+                New transaction
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCard(false)}
+                className="text-xs text-gray-400"
+              >
+                Close
+              </button>
+            </div>
+            <AmountToggle
+              amount={amount}
+              setAmount={setAmount}
+              isIncome={isIncome}
+              setIsIncome={setIsIncome}
+            />
+            <CategoryGrid selected={selectedCat} onSelect={setSelectedCat} />
+            <input
+              type="text"
+              placeholder="Note (optional)"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full bg-transparent border-b border-[#333] pb-2 text-gray-300 placeholder:text-gray-500 outline-none"
+            />
+            <button
+              onClick={() => {
+                const val = parseFloat(amount);
+                if (!val || Number.isNaN(val)) return;
+                handleAddTransaction();
+                setShowAddCard(false);
+              }}
+              className={`w-full text-white font-bold py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-transform ${
+                isIncome ? "bg-green-600 shadow-green-900/20" : "bg-red-600 shadow-red-900/20"
+              }`}
+            >
+              Add Transaction
+            </button>
+          </div>
+        </div>
+      )}
 
       {editingId && (
         <div
