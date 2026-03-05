@@ -728,14 +728,25 @@ export default function Dashboard() {
                                     </Text>
                                   </View>
                                   <View className="flex-1">
-                                    <Text className="font-medium text-white">
-                                      {tx.category}
-                                    </Text>
-                                    <Text className="text-xs text-gray-500">
-                                      {tx.note
-                                        ? `${tx.note} - ${tx.date}`
-                                        : tx.date}
-                                    </Text>
+                                    {tx.note ? (
+                                      <>
+                                        <Text className="font-medium text-white">
+                                          {tx.note}
+                                        </Text>
+                                        <Text className="text-xs text-gray-500">
+                                          {tx.date}
+                                        </Text>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Text className="font-medium text-white">
+                                          {tx.category}
+                                        </Text>
+                                        <Text className="text-xs text-gray-500">
+                                          {tx.date}
+                                        </Text>
+                                      </>
+                                    )}
                                   </View>
                                 </View>
                                 <Text className="text-base font-semibold text-white">
@@ -829,15 +840,25 @@ export default function Dashboard() {
                             </Text>
                           </View>
                           <View className="flex-1">
-                            <Text className="font-medium text-white">
-                              {tx.category}
-                            </Text>
-                            <Text className="text-xs text-gray-500">
-                              {tx.note
-                                ? `${tx.note} - ${tx.date}`
-                                : tx.date}{" "}
-                              {tx.isSystem && "(Auto)"}
-                            </Text>
+                            {tx.note ? (
+                              <>
+                                <Text className="font-medium text-white">
+                                  {tx.note}
+                                </Text>
+                                <Text className="text-xs text-gray-500">
+                                  {tx.date} {tx.isSystem && "(Auto)"}
+                                </Text>
+                              </>
+                            ) : (
+                              <>
+                                <Text className="font-medium text-white">
+                                  {tx.category}
+                                </Text>
+                                <Text className="text-xs text-gray-500">
+                                  {tx.date} {tx.isSystem && "(Auto)"}
+                                </Text>
+                              </>
+                            )}
                           </View>
                         </View>
                         <View className="flex-row items-center gap-2">
@@ -925,58 +946,54 @@ export default function Dashboard() {
               <View className="bg-card border border-border rounded-3xl p-5 gap-3">
                 <View className="flex-row items-center justify-between">
                   <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                    Full category breakdown
+                    Category breakdown
                   </Text>
                   <Pressable
                     onPress={() => setShowAllMonthFlows((prev) => !prev)}
                     className="px-3 py-1.5 rounded-full border border-border bg-white/5"
                   >
                     <Text className="text-[11px] text-gray-300 font-semibold">
-                      {showAllMonthFlows
-                        ? "Spare-only view"
-                        : "Show full flows"}
+                      {showAllMonthFlows ? "Spare-only view" : "Show full view"}
                     </Text>
                   </Pressable>
                 </View>
-                {monthExpenseCategories.every((cat) => fullExpenses.totals[cat] <= 0) ? (
-                  <Text className="text-xs text-gray-500">
-                    No expenses yet for this view.
-                  </Text>
-                ) : (
-                  <View className="gap-4">
-                    {monthExpenseCategories.map((cat) => {
-                      const spent = fullExpenses.totals[cat];
-                      if (spent <= 0) return null;
-                      const pct = pctOfIncome(spent);
-                      return (
-                        <View key={cat} className="gap-2">
-                          <View className="flex-row justify-between">
-                            <Text className="text-sm text-white">{cat}</Text>
-                            <Text className="text-xs text-gray-500">
-                              {pct.toFixed(0)}% - ${spent.toFixed(0)}
-                            </Text>
+                {showAllMonthFlows ? (
+                  monthExpenseCategories.every(
+                    (cat) => fullExpenses.totals[cat] <= 0
+                  ) ? (
+                    <Text className="text-xs text-gray-500">
+                      No expenses yet for this view.
+                    </Text>
+                  ) : (
+                    <View className="gap-4">
+                      {monthExpenseCategories.map((cat) => {
+                        const spent = fullExpenses.totals[cat];
+                        if (spent <= 0) return null;
+                        const pct = pctOfIncome(spent);
+                        return (
+                          <View key={cat} className="gap-2">
+                            <View className="flex-row justify-between">
+                              <Text className="text-sm text-white">{cat}</Text>
+                              <Text className="text-xs text-gray-500">
+                                {pct.toFixed(0)}% - ${spent.toFixed(0)}
+                              </Text>
+                            </View>
+                            <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                              <View
+                                style={{
+                                  width: `${Math.min(100, pct)}%`,
+                                  backgroundColor:
+                                    CATEGORY_STYLES[cat].selectedBg,
+                                }}
+                                className="h-2"
+                              />
+                            </View>
                           </View>
-                          <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                            <View
-                              style={{
-                                width: `${Math.min(100, pct)}%`,
-                                backgroundColor: CATEGORY_STYLES[cat].selectedBg,
-                              }}
-                              className="h-2"
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                  Category breakdown
-                </Text>
-                {periodSpending.totalSpent === 0 ? (
+                        );
+                      })}
+                    </View>
+                  )
+                ) : periodSpending.totalSpent === 0 ? (
                   <Text className="text-xs text-gray-500">
                     No spending yet for this month.
                   </Text>
@@ -1044,13 +1061,25 @@ export default function Dashboard() {
                         </Text>
                       </View>
                       <View className="flex-1">
-                        <Text className="font-medium text-white">
-                          {tx.category}
-                        </Text>
-                        <Text className="text-xs text-gray-500">
-                          {tx.note ? `${tx.note} - ${tx.date}` : tx.date}{" "}
-                          {tx.isSystem && "(Auto)"}
-                        </Text>
+                        {tx.note ? (
+                          <>
+                            <Text className="font-medium text-white">
+                              {tx.note}
+                            </Text>
+                            <Text className="text-xs text-gray-500">
+                              {tx.date} {tx.isSystem && "(Auto)"}
+                            </Text>
+                          </>
+                        ) : (
+                          <>
+                            <Text className="font-medium text-white">
+                              {tx.category}
+                            </Text>
+                            <Text className="text-xs text-gray-500">
+                              {tx.date} {tx.isSystem && "(Auto)"}
+                            </Text>
+                          </>
+                        )}
                       </View>
                     </View>
                     <Text
