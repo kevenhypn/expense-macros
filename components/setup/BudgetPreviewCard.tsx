@@ -9,6 +9,7 @@ type BudgetPreviewCardProps = {
   startDate: string;
   bills: Bill[];
   savingsGoal: SavingsGoal;
+  spareMoneyMode: boolean;
 };
 
 export function BudgetPreviewCard({
@@ -16,6 +17,7 @@ export function BudgetPreviewCard({
   startDate,
   bills,
   savingsGoal,
+  spareMoneyMode,
 }: BudgetPreviewCardProps) {
   const previewConfig: BudgetConfig = {
     startDate,
@@ -23,6 +25,7 @@ export function BudgetPreviewCard({
     bills,
     savingsGoal,
     rolloverUnspent: false,
+    spareMoneyMode,
   };
 
   const { billsTotal, savingsAmount, availableToSpend } =
@@ -33,7 +36,7 @@ export function BudgetPreviewCard({
   return (
     <View className="bg-card border border-border rounded-2xl p-4 gap-3">
       <Text className="text-xs text-gray-400 uppercase tracking-wider">
-        Budget preview
+        {spareMoneyMode ? "Spare budget preview" : "Budget preview"}
       </Text>
 
       <View className="flex-row justify-between">
@@ -58,14 +61,18 @@ export function BudgetPreviewCard({
       <View className="h-px bg-border" />
 
       <View className="flex-row justify-between">
-        <Text className="text-white">Available to spend</Text>
+        <Text className="text-white">
+          {spareMoneyMode ? "Spare budget" : "Available to spend"}
+        </Text>
         <Text className="text-green-500 font-bold">
           {formatCurrency(availableToSpend)}
         </Text>
       </View>
 
       <View className="flex-row justify-between">
-        <Text className="text-gray-300">Estimated daily budget</Text>
+        <Text className="text-gray-300">
+          {spareMoneyMode ? "Estimated daily allowance" : "Estimated daily budget"}
+        </Text>
         <Text className="text-white font-semibold">{formatCurrency(dailyBudget)}</Text>
       </View>
     </View>

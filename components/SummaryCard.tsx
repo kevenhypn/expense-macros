@@ -19,21 +19,21 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
   children,
 }) => {
   return (
-    <View className="bg-card border border-border rounded-3xl p-5 flex flex-col gap-2">
+    <View className="bg-card border border-border rounded-3xl p-5 gap-3">
       <Text className="text-gray-400 text-sm uppercase tracking-wider font-semibold">
         {title}
       </Text>
-      <View className="flex-row justify-between items-baseline">
+      <View className="gap-1">
         <Text
-          className={`text-3xl font-bold ${
+          className={`text-4xl font-bold leading-tight ${
             mainIsPositive ? "text-green-500" : "text-red-500"
           }`}
         >
           {mainValue}
         </Text>
-        <Text className="text-gray-500 text-sm font-medium">{subValue}</Text>
+        <Text className="text-gray-400 text-sm">{subValue}</Text>
       </View>
-      <Text className="text-xs text-gray-500 mt-1">{footerText}</Text>
+      <Text className="text-xs text-gray-500">{footerText}</Text>
       {children ? (
         <View className="mt-4 pt-4 border-t border-border gap-3">
           {children}

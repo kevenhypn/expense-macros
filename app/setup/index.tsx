@@ -57,6 +57,7 @@ export default function SetupWizard() {
   const [savingsMode, setSavingsMode] = useState<"percent" | "fixed">("percent");
   const [savingsValue, setSavingsValue] = useState<string>("20");
   const [rolloverUnspent, setRolloverUnspent] = useState(true);
+  const [spareMoneyMode, setSpareMoneyMode] = useState(true);
   const [errors, setErrors] = useState<{ income?: string }>({});
 
   const monthlyIncomeNumber = parseFloat(monthlyIncome) || 0;
@@ -92,6 +93,7 @@ export default function SetupWizard() {
     bills: normalizedBills,
     savingsGoal: normalizedSavingsGoal,
     rolloverUnspent,
+    spareMoneyMode,
   });
   const dailyBudget =
     previewFinancials.availableToSpend / Math.max(1, daysInMonth(startDate));
@@ -176,6 +178,7 @@ export default function SetupWizard() {
       bills: normalizedBills,
       savingsGoal: normalizedSavingsGoal,
       rolloverUnspent,
+      spareMoneyMode,
     };
 
     await saveConfig(config);
@@ -254,6 +257,29 @@ export default function SetupWizard() {
             <View
               className={`w-5 h-5 rounded-full bg-white ${
                 rolloverUnspent ? "ml-5" : "ml-0"
+              }`}
+            />
+          </View>
+        </Pressable>
+      </View>
+
+      <View className="gap-2">
+        <Text className="text-sm text-gray-300">Spare money mode</Text>
+        <Pressable
+          onPress={() => setSpareMoneyMode((prev) => !prev)}
+          className="w-full bg-borderAlt p-4 rounded-xl border border-border flex-row items-center justify-between"
+        >
+          <Text className="text-gray-300 flex-1 mr-3">
+            Focus on discretionary spending and hide income and set bills by default.
+          </Text>
+          <View
+            className={`w-12 h-7 rounded-full p-1 ${
+              spareMoneyMode ? "bg-green-600" : "bg-[#2a2a2a]"
+            }`}
+          >
+            <View
+              className={`w-5 h-5 rounded-full bg-white ${
+                spareMoneyMode ? "ml-5" : "ml-0"
               }`}
             />
           </View>
@@ -408,6 +434,10 @@ export default function SetupWizard() {
           <Text className="text-white font-medium">{rolloverUnspent ? "On" : "Off"}</Text>
         </View>
         <View className="flex-row justify-between">
+          <Text className="text-gray-300">Spare money mode</Text>
+          <Text className="text-white font-medium">{spareMoneyMode ? "On" : "Off"}</Text>
+        </View>
+        <View className="flex-row justify-between">
           <Text className="text-gray-300">Active bills</Text>
           <Text className="text-white font-medium">{normalizedBills.length}</Text>
         </View>
@@ -470,6 +500,7 @@ export default function SetupWizard() {
               startDate={startDate}
               bills={normalizedBills}
               savingsGoal={normalizedSavingsGoal}
+              spareMoneyMode={spareMoneyMode}
             />
 
             {renderAbout()}

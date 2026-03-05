@@ -38,7 +38,7 @@ import { SummaryCard } from "../components/SummaryCard";
 import { AmountToggle } from "../components/AmountToggle";
 import { CategoryGrid } from "../components/CategoryGrid";
 import { CATEGORY_STYLES, CATEGORY_TEXT_COLORS } from "../lib/categoryStyles";
-import { formatMoney0 } from "../src/utils/money";
+import { formatMoney0, formatMoney2 } from "../src/utils/money";
 
 type FilterType = "All" | "Spending" | "Bills" | "Savings" | "Income";
 
@@ -57,6 +57,7 @@ export default function Dashboard() {
   const [expandedCard, setExpandedCard] = useState<"period" | "today" | null>(
     null
   );
+  const [showAllMonthFlows, setShowAllMonthFlows] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "period">("day");
   const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
@@ -115,6 +116,12 @@ export default function Dashboard() {
   }, [isIncome, selectedCat]);
 
   useEffect(() => {
+    if (!config) return;
+    const nextSpareMode = config.spareMoneyMode ?? true;
+    setShowAllMonthFlows(!nextSpareMode);
+  }, [config]);
+
+  useEffect(() => {
     return () => {
       if (deleteTimerRef.current) {
         clearTimeout(deleteTimerRef.current);
@@ -138,6 +145,7 @@ export default function Dashboard() {
   }
 
   if (!config) return null;
+  const spareMoneyMode = config.spareMoneyMode ?? true;
 
   // --- Calculations ---
   const selectedDate = new Date(`${selectedDateISO}T00:00:00`);
@@ -296,10 +304,26 @@ export default function Dashboard() {
   const periodSpending = buildSpendingTotals(currentMonthTxs);
   const todaySpending = buildSpendingTotals(todayTxs);
   const fullExpenses = buildExpenseTotals(currentMonthTxs);
+  const shouldHideFullFlows = spareMoneyMode && !showAllMonthFlows;
+  const monthExpenseCategories = shouldHideFullFlows
+    ? (expenseCategories.filter((cat) => cat !== "Bills") as ExpenseCategory[])
+    : expenseCategories;
 
   const periodLogTxs = [...currentMonthTxs].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
+  const visiblePeriodLogTxs = shouldHideFullFlows
+    ? periodLogTxs.filter(
+        (tx) =>
+          !(tx.isSystem && tx.category === "Bills") && tx.category !== "Income"
+      )
+    : periodLogTxs;
+  const visibleSelectedDayTxs = shouldHideFullFlows
+    ? selectedDayTxs.filter(
+        (tx) =>
+          !(tx.isSystem && tx.category === "Bills") && tx.category !== "Income"
+      )
+    : selectedDayTxs;
   const todaySpendingTxs = todayTxs.filter((t) =>
     spendingCategories.includes(t.category as SpendingCategory)
   );
@@ -409,7 +433,7 @@ export default function Dashboard() {
 
   // Filter Logic
   const getFilteredTransactions = () => {
-    return selectedDayTxs
+    return visibleSelectedDayTxs
       .filter((t) => {
         if (filter === "All") return true;
         if (filter === "Spending")
@@ -599,9 +623,9 @@ export default function Dashboard() {
                       {expandedCard === "today" && (
                         <View className="gap-3">
                           <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                            Todays guide
+                            Today's guide
                           </Text>
-                          <View className="flex-row gap-2">
+                          <View className="flex-row flex-wrap gap-2">
                             <View className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
                               <Text className="text-xs text-gray-300">
                                 Net today: {formatMoney0(todayNet)}
@@ -638,7 +662,7 @@ export default function Dashboard() {
                                         {cat}
                                       </Text>
                                       <Text className="text-xs text-gray-500">
-                                        {pctSpent.toFixed(0)}% spent •{" "}
+                                        {pctSpent.toFixed(0)}% spent -{" "}
                                         {pctIncome.toFixed(0)}% income
                                       </Text>
                                     </View>
@@ -679,7 +703,7 @@ export default function Dashboard() {
                             {todaySpendingTxs.map((tx) => (
                               <View
                                 key={tx.id}
-                                className={`flex-row justify-between items-center gap-3 ${
+                                className={`rounded-2xl border border-border bg-[#151515] px-3 py-3 flex-row justify-between items-center gap-3 ${
                                   tx.isSystem ? "opacity-50" : "opacity-100"
                                 }`}
                               >
@@ -709,13 +733,13 @@ export default function Dashboard() {
                                     </Text>
                                     <Text className="text-xs text-gray-500">
                                       {tx.note
-                                        ? `${tx.note} • ${tx.date}`
+                                        ? `${tx.note} - ${tx.date}`
                                         : tx.date}
                                     </Text>
                                   </View>
                                 </View>
-                                <Text className="font-bold text-white">
-                                  {tx.amount.toFixed(2)}
+                                <Text className="text-base font-semibold text-white">
+                                  {formatMoney2(tx.amount)}
                                 </Text>
                               </View>
                             ))}
@@ -745,7 +769,7 @@ export default function Dashboard() {
                     <View className="w-1 h-12 rounded-full bg-emerald-400/80" />
                     <View className="gap-1">
                       <Text className="text-white font-semibold text-base">
-                      Add transaction
+                        Add transaction
                       </Text>
                       <Text className="text-xs text-gray-400">
                         Tap to enter amount and details
@@ -763,9 +787,9 @@ export default function Dashboard() {
               {/* Log Section */}
               <Animated.View
                 entering={FadeInDown.duration(300).delay(300)}
-                className="bg-cardAlt rounded-t-3xl min-h-[400px] p-6"
+                className="mx-6 mb-2 bg-card border border-border rounded-3xl min-h-[360px] p-5"
               >
-                <View className="flex-row items-end justify-between mb-6">
+                <View className="flex-row items-end justify-between mb-5">
                   <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
                     {selectedDateLabel} transactions
                   </Text>
@@ -775,14 +799,15 @@ export default function Dashboard() {
                 </View>
 
                 {/* Transaction List */}
-                <View className="gap-4">
+                <View className="gap-3">
                   {filteredList.map((tx) => (
-                    <View key={tx.id} className="gap-2">
-                      <View
-                        className={`flex-row justify-between items-center gap-3 ${
-                          tx.isSystem ? "opacity-50" : "opacity-100"
-                        }`}
-                      >
+                    <View
+                      key={tx.id}
+                      className={`rounded-2xl border border-border bg-[#151515] px-3 py-3 ${
+                        tx.isSystem ? "opacity-60" : "opacity-100"
+                      }`}
+                    >
+                      <View className="flex-row justify-between items-center gap-3">
                         <View className="flex-row gap-3 items-center flex-1">
                           <View
                             style={{
@@ -809,30 +834,29 @@ export default function Dashboard() {
                             </Text>
                             <Text className="text-xs text-gray-500">
                               {tx.note
-                                ? `${tx.note} • ${tx.date}`
+                                ? `${tx.note} - ${tx.date}`
                                 : tx.date}{" "}
                               {tx.isSystem && "(Auto)"}
                             </Text>
                           </View>
                         </View>
-                        <View className="flex-row items-center gap-3">
+                        <View className="flex-row items-center gap-2">
                           <Text
-                            className={`font-bold ${
+                            className={`text-base font-semibold ${
                               tx.amount > 0 ? "text-green-500" : "text-white"
                             }`}
                           >
-                            {tx.amount > 0 ? "+" : ""}
-                            {tx.amount.toFixed(2)}
+                            {formatMoney2(tx.amount)}
                           </Text>
                           <Pressable
                             onPress={() => handleStartEdit(tx)}
-                            className="p-1"
+                            className="p-2 rounded-lg bg-white/5"
                           >
                             <Pencil size={18} color="#6b7280" />
                           </Pressable>
                           <Pressable
                             onPress={() => handleDeleteTransaction(tx.id)}
-                            className="p-1"
+                            className="p-2 rounded-lg bg-white/5"
                           >
                             <Trash2 size={18} color="#6b7280" />
                           </Pressable>
@@ -899,16 +923,28 @@ export default function Dashboard() {
               </View>
 
               <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                  Full category breakdown
-                </Text>
-                {fullExpenses.totalSpent === 0 ? (
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                    Full category breakdown
+                  </Text>
+                  <Pressable
+                    onPress={() => setShowAllMonthFlows((prev) => !prev)}
+                    className="px-3 py-1.5 rounded-full border border-border bg-white/5"
+                  >
+                    <Text className="text-[11px] text-gray-300 font-semibold">
+                      {showAllMonthFlows
+                        ? "Spare-only view"
+                        : "Show full flows"}
+                    </Text>
+                  </Pressable>
+                </View>
+                {monthExpenseCategories.every((cat) => fullExpenses.totals[cat] <= 0) ? (
                   <Text className="text-xs text-gray-500">
-                    No expenses yet for this month.
+                    No expenses yet for this view.
                   </Text>
                 ) : (
                   <View className="gap-4">
-                    {expenseCategories.map((cat) => {
+                    {monthExpenseCategories.map((cat) => {
                       const spent = fullExpenses.totals[cat];
                       if (spent <= 0) return null;
                       const pct = pctOfIncome(spent);
@@ -917,7 +953,7 @@ export default function Dashboard() {
                           <View className="flex-row justify-between">
                             <Text className="text-sm text-white">{cat}</Text>
                             <Text className="text-xs text-gray-500">
-                              {pct.toFixed(0)}% • ${spent.toFixed(0)}
+                              {pct.toFixed(0)}% - ${spent.toFixed(0)}
                             </Text>
                           </View>
                           <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
@@ -957,7 +993,7 @@ export default function Dashboard() {
                           <View className="flex-row justify-between">
                             <Text className="text-sm text-white">{cat}</Text>
                             <Text className="text-xs text-gray-500">
-                              {pctSpent.toFixed(0)}% • ${spent.toFixed(0)}
+                              {pctSpent.toFixed(0)}% - ${spent.toFixed(0)}
                             </Text>
                           </View>
                           <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
@@ -977,14 +1013,14 @@ export default function Dashboard() {
                 )}
               </View>
 
-              <View className="bg-cardAlt rounded-3xl p-5 gap-3">
+              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
                 <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
                   Month log
                 </Text>
-                {periodLogTxs.map((tx) => (
+                {visiblePeriodLogTxs.map((tx) => (
                   <View
                     key={tx.id}
-                    className={`flex-row justify-between items-center gap-3 ${
+                    className={`rounded-2xl border border-border bg-[#151515] px-3 py-3 flex-row justify-between items-center gap-3 ${
                       tx.isSystem ? "opacity-50" : "opacity-100"
                     }`}
                   >
@@ -1012,22 +1048,21 @@ export default function Dashboard() {
                           {tx.category}
                         </Text>
                         <Text className="text-xs text-gray-500">
-                          {tx.note ? `${tx.note} • ${tx.date}` : tx.date}{" "}
+                          {tx.note ? `${tx.note} - ${tx.date}` : tx.date}{" "}
                           {tx.isSystem && "(Auto)"}
                         </Text>
                       </View>
                     </View>
                     <Text
-                      className={`font-bold ${
+                      className={`text-base font-semibold ${
                         tx.amount > 0 ? "text-green-500" : "text-white"
                       }`}
                     >
-                      {tx.amount > 0 ? "+" : ""}
-                      {tx.amount.toFixed(2)}
+                      {formatMoney2(tx.amount)}
                     </Text>
                   </View>
                 ))}
-                {periodLogTxs.length === 0 && (
+                {visiblePeriodLogTxs.length === 0 && (
                   <Text className="text-center text-gray-600 mt-2">
                     No transactions found
                   </Text>
@@ -1037,11 +1072,11 @@ export default function Dashboard() {
           )}
         </ScrollView>
 
-        <View className="border-t border-border bg-background">
-          <View className="flex-row items-stretch">
+        <View className="border-t border-border bg-background px-6 py-3">
+          <View className="flex-row items-stretch rounded-2xl border border-border bg-cardAlt p-1">
             <Pressable
               onPress={() => setViewMode("day")}
-              className={`flex-1 py-4 items-center ${
+              className={`flex-1 py-3 items-center rounded-xl ${
                 viewMode === "day" ? "bg-white/10" : "bg-transparent"
               }`}
             >
@@ -1053,10 +1088,9 @@ export default function Dashboard() {
                 Day + Log
               </Text>
             </Pressable>
-            <View className="w-px bg-border" />
             <Pressable
               onPress={() => setViewMode("period")}
-              className={`flex-1 py-4 items-center ${
+              className={`flex-1 py-3 items-center rounded-xl ${
                 viewMode === "period" ? "bg-white/10" : "bg-transparent"
               }`}
             >
@@ -1278,4 +1312,3 @@ export default function Dashboard() {
     </SafeAreaView>
   );
 }
-
