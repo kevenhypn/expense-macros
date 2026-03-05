@@ -19,23 +19,25 @@ export const SummaryCard: React.FC<SummaryCardProps> = ({
   children,
 }) => {
   return (
-    <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-      <Text className="text-gray-400 text-sm uppercase tracking-wider font-semibold">
+    <View className="overflow-hidden rounded-[32px] border border-border bg-card px-6 py-6">
+      <View className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-400/10" />
+      <View className="absolute bottom-0 left-8 h-16 w-16 rounded-full bg-white/5" />
+      <Text className="text-sm font-semibold uppercase tracking-wider text-gray-400">
         {title}
       </Text>
-      <View className="gap-1">
+      <View className="mt-4 gap-2">
         <Text
           className={`text-4xl font-bold leading-tight ${
-            mainIsPositive ? "text-green-500" : "text-red-500"
+            mainIsPositive ? "text-emerald-200" : "text-orange-200"
           }`}
         >
           {mainValue}
         </Text>
-        <Text className="text-gray-400 text-sm">{subValue}</Text>
+        <Text className="text-sm leading-6 text-gray-300">{subValue}</Text>
       </View>
-      <Text className="text-xs text-gray-500">{footerText}</Text>
+      <Text className="mt-4 text-sm text-gray-500">{footerText}</Text>
       {children ? (
-        <View className="mt-4 pt-4 border-t border-border gap-3">
+        <View className="mt-5 gap-3 border-t border-white/8 pt-5">
           {children}
         </View>
       ) : null}

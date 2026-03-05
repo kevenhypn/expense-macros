@@ -13,9 +13,16 @@ import {
   Vibration,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, {
+  Easing,
+  FadeInDown,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import {
   Settings,
   RefreshCw,
@@ -23,6 +30,7 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  Plus,
 } from "lucide-react-native";
 import { Transaction, TransactionCategory } from "../types";
 import {
@@ -34,32 +42,33 @@ import {
   isSameMonth,
 } from "../lib/storage";
 import { useAppData } from "../hooks/useAppData";
-import { BudgetFrame } from "../components/dashboard/BudgetFrame";
-import { AmountToggle } from "../components/AmountToggle";
+import { BudgetHero } from "../components/dashboard/BudgetHero";
 import { CategoryGrid } from "../components/CategoryGrid";
 import { CATEGORY_STYLES, CATEGORY_TEXT_COLORS } from "../lib/categoryStyles";
 import { formatMoney0, formatMoney2 } from "../src/utils/money";
+import { getBudgetTheme } from "../src/utils/budgetTheme";
 
 type FilterType = "All" | "Spending" | "Bills" | "Savings" | "Income";
 
 export default function Dashboard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { config, transactions, setTransactions, isLoading, refresh } =
     useAppData();
 
   // UI State
   const [amount, setAmount] = useState("");
-  const [isIncome, setIsIncome] = useState(false);
-  const [selectedCat, setSelectedCat] = useState<TransactionCategory>("Food");
+  const [selectedCat, setSelectedCat] = useState<
+    "Food" | "Shopping" | "Transport" | "Other"
+  >("Food");
   const [note, setNote] = useState("");
   const [filter] = useState<FilterType>("All");
   const [refreshing, setRefreshing] = useState(false);
   const [showAllMonthFlows, setShowAllMonthFlows] = useState(false);
-  const [showAddCard, setShowAddCard] = useState(false);
+  const [showAddSheet, setShowAddSheet] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "period">("day");
   const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showMonthBreakdown, setShowMonthBreakdown] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState("");
   const [editAmount, setEditAmount] = useState("");
@@ -72,6 +81,7 @@ export default function Dashboard() {
     nextTxs: Transaction[];
   } | null>(null);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const addSheetProgress = useSharedValue(0);
 
   const spendingCategories = [
     "Food",
@@ -81,6 +91,12 @@ export default function Dashboard() {
     "Other",
   ] as const;
   type SpendingCategory = (typeof spendingCategories)[number];
+  const quickLogCategories = [
+    "Food",
+    "Shopping",
+    "Transport",
+    "Other",
+  ] as const;
   const expenseCategories = [
     "Bills",
     "Savings",
@@ -91,9 +107,6 @@ export default function Dashboard() {
     "Other",
   ] as const;
   type ExpenseCategory = (typeof expenseCategories)[number];
-  const reimbursementCategories: TransactionCategory[] = [
-    ...spendingCategories,
-  ];
   const isSpendingCategory = (
     category: TransactionCategory
   ): category is SpendingCategory =>
@@ -107,17 +120,22 @@ export default function Dashboard() {
   }, [isLoading, config, router]);
 
   useEffect(() => {
-    if (!isIncome) return;
-    if (!isSpendingCategory(selectedCat)) {
-      setSelectedCat("Other");
-    }
-  }, [isIncome, selectedCat]);
-
-  useEffect(() => {
     if (!config) return;
     const nextSpareMode = config.spareMoneyMode ?? true;
     setShowAllMonthFlows(!nextSpareMode);
   }, [config]);
+
+  useEffect(() => {
+    if (!showAddSheet) {
+      addSheetProgress.value = 0;
+      return;
+    }
+
+    addSheetProgress.value = withTiming(1, {
+      duration: 280,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [addSheetProgress, showAddSheet]);
 
   useEffect(() => {
     return () => {
@@ -133,6 +151,29 @@ export default function Dashboard() {
     await refresh();
     setRefreshing(false);
   }, [refresh]);
+
+  const closeAddSheet = useCallback(() => {
+    addSheetProgress.value = withTiming(
+      0,
+      {
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(setShowAddSheet)(false);
+        }
+      }
+    );
+  }, [addSheetProgress]);
+
+  const addSheetBackdropStyle = useAnimatedStyle(() => ({
+    opacity: addSheetProgress.value * 0.6,
+  }));
+
+  const addSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - addSheetProgress.value) * 360 }],
+  }));
 
   if (isLoading) {
     return (
@@ -183,6 +224,9 @@ export default function Dashboard() {
   const periodLeft = availableToSpend + netDiscretionary;
   const monthLeft = periodLeft;
   const monthBudgetTotal = availableToSpend;
+  const budgetTheme = getBudgetTheme(
+    monthBudgetTotal > 0 && monthLeft >= 0 ? monthLeft / monthBudgetTotal : 0
+  );
   const pctOfIncome = (amount: number) =>
     totalIncome > 0 ? (amount / totalIncome) * 100 : 0;
 
@@ -225,16 +269,9 @@ export default function Dashboard() {
     }
   }
 
-  const todayTxs = selectedDayTxs;
-  const todaySpent = -todayTxs.reduce((sum, t) => {
-    if (!isSpendingCategory(t.category)) return sum;
-    return sum + t.amount;
-  }, 0);
-
-  const todayLeft = dailyBudget - todaySpent;
-  const safeToSpendToday = dailyBudget;
-  const remainingToday = todayLeft;
   const daysLeftInMonth = dim - selectedDay + 1;
+  const suggestedDailyLeft =
+    daysLeftInMonth > 0 ? monthLeft / daysLeftInMonth : monthLeft;
   const nextResetDate = new Date(
     selectedDate.getFullYear(),
     selectedDate.getMonth() + 1,
@@ -328,26 +365,30 @@ export default function Dashboard() {
     const val = parseFloat(amount);
     if (!val || isNaN(val)) return;
 
-    const safeCategory =
-      isIncome && !isSpendingCategory(selectedCat) ? "Other" : selectedCat;
-
     const newTx: Transaction = {
       id: generateId(),
       date: selectedDateISO,
-      amount: isIncome ? Math.abs(val) : -Math.abs(val),
-      category: safeCategory,
-      note: note,
+      amount: -Math.abs(val),
+      category: selectedCat,
+      note: note.trim(),
       isSystem: false,
     };
 
     const newTxs = [newTx, ...transactions];
     setTransactions(newTxs);
     await saveTransactions(newTxs);
-    Vibration.vibrate(10);
 
     // Reset form
     setAmount("");
     setNote("");
+  };
+
+  const handleSaveQuickTransaction = async () => {
+    const parsedAmount = parseFloat(amount);
+    if (!parsedAmount || isNaN(parsedAmount)) return;
+
+    closeAddSheet();
+    await handleAddTransaction();
   };
 
   const handleDeleteTransaction = async (id: string) => {
@@ -460,6 +501,9 @@ export default function Dashboard() {
   };
 
   const filteredList = getFilteredTransactions();
+  const parsedQuickLogAmount = parseFloat(amount);
+  const canSaveQuickLog =
+    !isNaN(parsedQuickLogAmount) && parsedQuickLogAmount > 0;
 
   const handleDateChange = (_: unknown, date?: Date) => {
     if (Platform.OS === "android") {
@@ -479,13 +523,23 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
+      <View pointerEvents="none" className="absolute inset-0">
+        <View
+          className="absolute -top-24 right-0 h-64 w-64 rounded-full"
+          style={{ backgroundColor: budgetTheme.accentGlowStrong }}
+        />
+        <View
+          className="absolute bottom-32 -left-20 h-52 w-52 rounded-full"
+          style={{ backgroundColor: budgetTheme.accentGlowSoft }}
+        />
+      </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
       >
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingBottom: 120 }}
+          contentContainerStyle={{ paddingBottom: 176 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -540,102 +594,36 @@ export default function Dashboard() {
             <>
               <Animated.View
                 entering={FadeInDown.duration(300).delay(100)}
-                className="px-6 flex-col gap-4 mb-6"
+                className="px-6 mb-6"
               >
-                <Pressable
-                  onPress={() => setShowMonthBreakdown((prev) => !prev)}
-                  accessibilityRole="button"
+                <View
+                  accessible
                   accessibilityLabel={`Left this month: ${formatMoney0(
                     monthLeft
                   )}. Spent ${formatMoney0(
                     discretionarySpent
                   )} of ${formatMoney0(
                     monthBudgetTotal
-                  )}. Safe today ${formatMoney0(safeToSpendToday)}.`}
+                  )}. ${monthLeft < 0 ? "Behind" : "About"} ${formatMoney0(
+                    Math.abs(suggestedDailyLeft)
+                  )} a day for the rest of the month.`}
                 >
-                  <View className="items-center">
-                    <BudgetFrame
-                      budgetTotal={monthBudgetTotal}
-                      monthLeft={monthLeft}
-                      discretionarySpent={discretionarySpent}
-                      daysLeftInMonth={daysLeftInMonth}
-                      resetLabel={nextResetLabel}
-                      safeToSpendToday={safeToSpendToday}
-                      remainingToday={remainingToday}
-                    />
-                    <Text className="text-[11px] text-gray-500 mt-3">
-                      Tap frame for month breakdown
-                    </Text>
-                  </View>
-                </Pressable>
-
-                {showMonthBreakdown ? (
-                  <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                    <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                      Month breakdown
-                    </Text>
-                    <View className="flex-row justify-between">
-                      <Text className="text-xs text-gray-500">
-                        Spent so far
-                      </Text>
-                      <Text className="text-sm font-semibold text-white">
-                        {formatMoney0(discretionarySpent)}
-                      </Text>
-                    </View>
-                    <View className="flex-row justify-between">
-                      <Text className="text-xs text-gray-500">
-                        Overspent days
-                      </Text>
-                      <Text className="text-sm font-semibold text-white">
-                        {overspentDays}
-                      </Text>
-                    </View>
-                    <View className="flex-row justify-between">
-                      <Text className="text-xs text-gray-500">Budget mode</Text>
-                      <Text className="text-sm font-semibold text-white">
-                        {rolloverUnspent ? "rollover" : "fixed"}
-                      </Text>
-                    </View>
-                  </View>
-                ) : null}
-
-
-              </Animated.View>
-
-              {/* Add Transaction Form */}
-              <Animated.View
-                entering={FadeInDown.duration(300).delay(200)}
-                className="px-6 mb-8"
-              >
-                <Pressable
-                  onPress={() => setShowAddCard(true)}
-                  className="w-full rounded-3xl border border-[#2f2f2f] bg-[#1a1a1a] p-4 flex-row items-center justify-between"
-                >
-                  <View className="flex-row items-center gap-3">
-                    <View className="w-1 h-12 rounded-full bg-emerald-400/80" />
-                    <View className="gap-1">
-                      <Text className="text-white font-semibold text-base">
-                        Add transaction
-                      </Text>
-                      <Text className="text-xs text-gray-400">
-                        Tap to enter amount and details
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="h-10 px-4 rounded-full bg-emerald-400/15 items-center justify-center border border-emerald-400/30">
-                    <Text className="text-emerald-200 font-semibold">
-                      Amount
-                    </Text>
-                  </View>
-                </Pressable>
+                  <BudgetHero
+                    budgetTotal={monthBudgetTotal}
+                    monthLeft={monthLeft}
+                    discretionarySpent={discretionarySpent}
+                    daysLeftInMonth={daysLeftInMonth}
+                    resetLabel={nextResetLabel}
+                  />
+                </View>
               </Animated.View>
 
               {/* Log Section */}
               <Animated.View
-                entering={FadeInDown.duration(300).delay(300)}
-                className="mx-6 mb-2 bg-card border border-border rounded-3xl min-h-[360px] p-5"
+                entering={FadeInDown.duration(300).delay(200)}
+                className="mx-6 mb-2 min-h-[360px] overflow-hidden rounded-[28px] border border-border bg-card p-5"
               >
-                <View className="flex-row items-end justify-between mb-5">
+                <View className="mb-5 flex-row items-center justify-between gap-3">
                   <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
                     {selectedDateLabel} transactions
                   </Text>
@@ -649,7 +637,7 @@ export default function Dashboard() {
                   {filteredList.map((tx) => (
                     <View
                       key={tx.id}
-                      className={`rounded-2xl border border-border bg-[#151515] flex-row items-center gap-3 overflow-hidden ${
+                      className={`rounded-[18px] border border-border bg-cardAlt flex-row items-center gap-3 overflow-hidden ${
                         tx.isSystem ? "opacity-60" : "opacity-100"
                       }`}
                     >
@@ -662,7 +650,7 @@ export default function Dashboard() {
                         }}
                       />
                       <View className="flex-1 flex-row items-center justify-between gap-3 px-2 py-3">
-                        <View className="flex-1">
+                        <View className="min-w-0 flex-1">
                           {tx.note ? (
                             <>
                               <Text className="font-medium text-white">
@@ -685,23 +673,28 @@ export default function Dashboard() {
                             </>
                           )}
                         </View>
-                        <View className="flex-row items-center gap-2">
+                        <View className="shrink-0 flex-row items-center gap-2">
                           <Text
                             className={`text-base font-semibold ${
-                              tx.amount > 0 ? "text-green-500" : "text-white"
+                              tx.amount > 0 ? "" : "text-white"
                             }`}
+                            style={
+                              tx.amount > 0
+                                ? { color: budgetTheme.accentText }
+                                : undefined
+                            }
                           >
                             {formatMoney2(tx.amount)}
                           </Text>
                           <Pressable
                             onPress={() => handleStartEdit(tx)}
-                            className="p-2 rounded-lg bg-white/5"
+                            className="rounded-[12px] bg-white/5 p-2"
                           >
                             <Pencil size={18} color="#6b7280" />
                           </Pressable>
                           <Pressable
                             onPress={() => handleDeleteTransaction(tx.id)}
-                            className="p-2 rounded-lg bg-white/5"
+                            className="rounded-[12px] bg-white/5 p-2"
                           >
                             <Trash2 size={18} color="#6b7280" />
                           </Pressable>
@@ -715,7 +708,7 @@ export default function Dashboard() {
                         No transactions found
                       </Text>
                       <Text className="text-center text-gray-500 text-xs">
-                        Tap Add to create your first transaction.
+                        Tap + to create your first transaction.
                       </Text>
                     </View>
                   )}
@@ -727,56 +720,88 @@ export default function Dashboard() {
               entering={FadeInDown.duration(300).delay(100)}
               className="px-6 flex-col gap-4"
             >
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-gray-400 text-sm uppercase tracking-wider font-semibold">
+              <View className="overflow-hidden rounded-[28px] border border-border bg-card px-6 py-6">
+                <View
+                  className="absolute -right-10 -top-12 h-36 w-36 rounded-full"
+                  style={{ backgroundColor: budgetTheme.accentGlowStrong }}
+                />
+                <View
+                  className="absolute -bottom-10 -left-10 h-28 w-28 rounded-full"
+                  style={{ backgroundColor: budgetTheme.accentGlowSoft }}
+                />
+                <Text className="text-sm font-semibold uppercase tracking-wider text-gray-400">
                   Month breakdown
                 </Text>
-                <View className="flex-row justify-between">
-                  <View>
-                    <Text className="text-xs text-gray-500">Left</Text>
+                <View className="mt-5 flex-row items-start justify-between gap-4">
+                  <View className="min-w-0 flex-1 gap-2">
+                    <Text className="text-sm text-gray-400">Left this month</Text>
                     <Text
-                      className={`text-2xl font-bold ${
-                        periodLeft >= 0 ? "text-green-500" : "text-red-500"
-                      }`}
+                      className={`text-4xl font-bold ${periodLeft >= 0 ? "" : "text-orange-200"}`}
+                      style={
+                        periodLeft >= 0
+                          ? { color: budgetTheme.accentText }
+                          : undefined
+                      }
                     >
                       {formatMoney0(periodLeft)}
                     </Text>
                   </View>
-                  <View className="items-end">
-                    <Text className="text-xs text-gray-500">
+                  <View className="min-w-[108px] items-end gap-2">
+                    <Text className="text-sm text-gray-400">
                       Overspent days
                     </Text>
-                    <Text className="text-2xl font-bold text-white">
+                    <Text className="text-3xl font-bold text-white">
                       {overspentDays}
                     </Text>
                   </View>
                 </View>
-                <View className="flex-row justify-between">
-                  <View>
-                    <Text className="text-xs text-gray-500">Spent</Text>
-                    <Text className="text-lg font-semibold text-white">
+                <View className="mt-5 flex-row flex-wrap gap-2">
+                  <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
+                    <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                      Spent
+                    </Text>
+                    <Text className="mt-1 text-base font-semibold text-white">
                       {formatMoney0(discretionarySpent)}
                     </Text>
                   </View>
-                  <View>
-                    <Text className="text-xs text-gray-500">Budget mode</Text>
-                    <Text className="text-lg font-semibold text-white">
+                  <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
+                    <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                      Budget mode
+                    </Text>
+                    <Text className="mt-1 text-base font-semibold text-white">
                       {rolloverUnspent ? "Rollover" : "Fixed"}
                     </Text>
                   </View>
                 </View>
               </View>
 
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+              <View className="overflow-hidden rounded-[28px] border border-border bg-card px-5 py-5 gap-4">
+                <View className="flex-row items-center justify-between gap-3">
+                  <Text className="min-w-0 flex-1 text-sm font-semibold uppercase tracking-wider text-gray-400">
                     Category breakdown
                   </Text>
                   <Pressable
                     onPress={() => setShowAllMonthFlows((prev) => !prev)}
-                    className="px-3 py-1.5 rounded-full border border-border bg-white/5"
+                    className="rounded-full border px-4 py-2"
+                    style={
+                      showAllMonthFlows
+                        ? {
+                            borderColor: budgetTheme.accentBorder,
+                            backgroundColor: budgetTheme.accentSurface,
+                          }
+                        : undefined
+                    }
                   >
-                    <Text className="text-[11px] text-gray-300 font-semibold">
+                    <Text
+                      className={`text-[11px] font-semibold ${
+                        showAllMonthFlows ? "" : "text-gray-300"
+                      }`}
+                      style={
+                        showAllMonthFlows
+                          ? { color: budgetTheme.accentText }
+                          : undefined
+                      }
+                    >
                       {showAllMonthFlows ? "Spare-only view" : "Show full view"}
                     </Text>
                   </Pressable>
@@ -796,13 +821,13 @@ export default function Dashboard() {
                         const pct = pctOfIncome(spent);
                         return (
                           <View key={cat} className="gap-2">
-                            <View className="flex-row justify-between">
-                              <Text className="text-sm text-white">{cat}</Text>
+                            <View className="flex-row items-center justify-between gap-3">
+                              <Text className="text-sm font-semibold text-white">{cat}</Text>
                               <Text className="text-xs text-gray-500">
                                 {pct.toFixed(0)}% - ${spent.toFixed(0)}
                               </Text>
                             </View>
-                            <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                            <View className="h-2.5 w-full overflow-hidden rounded-full bg-white/8">
                               <View
                                 style={{
                                   width: `${Math.min(100, pct)}%`,
@@ -831,13 +856,13 @@ export default function Dashboard() {
                         : 0;
                       return (
                         <View key={cat} className="gap-2">
-                          <View className="flex-row justify-between">
-                            <Text className="text-sm text-white">{cat}</Text>
+                          <View className="flex-row items-center justify-between gap-3">
+                            <Text className="text-sm font-semibold text-white">{cat}</Text>
                             <Text className="text-xs text-gray-500">
                               {pctSpent.toFixed(0)}% - ${spent.toFixed(0)}
                             </Text>
                           </View>
-                          <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
+                          <View className="h-2.5 w-full overflow-hidden rounded-full bg-white/8">
                             <View
                               style={{
                                 width: `${Math.min(100, pctSpent)}%`,
@@ -854,14 +879,14 @@ export default function Dashboard() {
                 )}
               </View>
 
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+              <View className="overflow-hidden rounded-[28px] border border-border bg-card px-5 py-5 gap-3">
+                <Text className="text-sm font-semibold uppercase tracking-wider text-gray-400">
                   Month log
                 </Text>
                 {visiblePeriodLogTxs.map((tx) => (
                   <View
                     key={tx.id}
-                    className={`rounded-2xl border border-border bg-[#151515] flex-row items-center gap-3 overflow-hidden ${
+                    className={`rounded-[18px] border border-border bg-cardAlt flex-row items-center gap-3 overflow-hidden ${
                       tx.isSystem ? "opacity-50" : "opacity-100"
                     }`}
                   >
@@ -873,7 +898,7 @@ export default function Dashboard() {
                       }}
                     />
                     <View className="flex-1 flex-row items-center justify-between gap-3 px-2 py-3">
-                      <View className="flex-1">
+                      <View className="min-w-0 flex-1">
                         {tx.note ? (
                           <>
                             <Text className="font-medium text-white">
@@ -898,8 +923,13 @@ export default function Dashboard() {
                       </View>
                       <Text
                         className={`text-base font-semibold ${
-                          tx.amount > 0 ? "text-green-500" : "text-white"
+                          tx.amount > 0 ? "" : "text-white"
                         }`}
+                        style={
+                          tx.amount > 0
+                            ? { color: budgetTheme.accentText }
+                            : undefined
+                        }
                       >
                         {formatMoney2(tx.amount)}
                       </Text>
@@ -916,34 +946,50 @@ export default function Dashboard() {
           )}
         </ScrollView>
 
-        <View className="border-t border-border bg-background px-6 py-3">
-          <View className="flex-row items-stretch rounded-2xl border border-border bg-cardAlt p-1">
+        <View className="border-t border-white/8 bg-background px-6 py-3">
+          <View className="flex-row items-stretch rounded-[18px] border border-border bg-card p-1.5">
             <Pressable
               onPress={() => setViewMode("day")}
-              className={`flex-1 py-3 items-center rounded-xl ${
-                viewMode === "day" ? "bg-white/10" : "bg-transparent"
-              }`}
+              className="flex-1 items-center rounded-xl py-3"
+              style={
+                viewMode === "day"
+                  ? { backgroundColor: budgetTheme.accent }
+                  : undefined
+              }
             >
               <Text
                 className={`text-sm font-semibold ${
-                  viewMode === "day" ? "text-white" : "text-gray-500"
+                  viewMode === "day" ? "" : "text-gray-500"
                 }`}
+                style={
+                  viewMode === "day"
+                    ? { color: budgetTheme.onAccent }
+                    : undefined
+                }
               >
-                Day + Log
+                Today
               </Text>
             </Pressable>
             <Pressable
               onPress={() => setViewMode("period")}
-              className={`flex-1 py-3 items-center rounded-xl ${
-                viewMode === "period" ? "bg-white/10" : "bg-transparent"
-              }`}
+              className="flex-1 items-center rounded-xl py-3"
+              style={
+                viewMode === "period"
+                  ? { backgroundColor: budgetTheme.accent }
+                  : undefined
+              }
             >
               <Text
                 className={`text-sm font-semibold ${
-                  viewMode === "period" ? "text-white" : "text-gray-500"
+                  viewMode === "period" ? "" : "text-gray-500"
                 }`}
+                style={
+                  viewMode === "period"
+                    ? { color: budgetTheme.onAccent }
+                    : undefined
+                }
               >
-                Month Breakdown
+                Month
               </Text>
             </Pressable>
           </View>
@@ -957,35 +1003,50 @@ export default function Dashboard() {
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
+            className="flex-1 justify-end"
           >
             <Pressable
-              className="flex-1 bg-black/60 justify-end px-6 pb-8"
+              className="flex-1 bg-black/60 justify-end"
               onPress={handleCancelEdit}
             >
               <Pressable
-                className="bg-background border border-border rounded-3xl p-5 gap-4"
+                className="rounded-t-[32px] border-t border-border bg-background px-6 pt-4"
+                style={{ paddingBottom: Math.max(insets.bottom, 20) }}
                 onPress={() => {}}
               >
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-400 uppercase tracking-wider">
-                    Edit transaction
-                  </Text>
-                  <Pressable onPress={handleCancelEdit}>
-                    <Text className="text-xs text-gray-400">Close</Text>
-                  </Pressable>
+                <View className="items-center pb-3">
+                  <View className="h-1.5 w-14 rounded-full bg-white/10" />
                 </View>
                 <ScrollView
                   keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ gap: 16, paddingBottom: 8 }}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 18, paddingBottom: 8 }}
                 >
+                  <View className="flex-row items-center justify-between gap-3">
+                    <View className="min-w-0 flex-1 gap-1">
+                      <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Transaction
+                      </Text>
+                      <Text className="text-2xl font-bold text-white">
+                        Edit transaction
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={handleCancelEdit}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
+                    >
+                      <Text className="text-sm font-medium text-gray-300">
+                        Close
+                      </Text>
+                    </Pressable>
+                  </View>
                   <View className="flex-row gap-3">
                     <TextInput
                       value={editDate}
                       onChangeText={setEditDate}
                       placeholder="YYYY-MM-DD"
                       placeholderTextColor="#6b7280"
-                      className="flex-1 bg-borderAlt p-3 rounded-xl text-white border border-border"
+                      className="flex-1 rounded-[18px] border border-border bg-cardAlt p-4 text-white"
                     />
                     <TextInput
                       keyboardType="decimal-pad"
@@ -993,7 +1054,8 @@ export default function Dashboard() {
                       onChangeText={setEditAmount}
                       placeholder="$"
                       placeholderTextColor="#6b7280"
-                      className="w-28 bg-borderAlt p-3 rounded-xl text-white border border-border"
+                      className="w-32 rounded-[18px] border border-border bg-cardAlt p-4 text-white"
+                      style={{ paddingVertical: 0 }}
                     />
                   </View>
                   <CategoryGrid
@@ -1005,18 +1067,26 @@ export default function Dashboard() {
                     placeholderTextColor="#6b7280"
                     value={editNote}
                     onChangeText={setEditNote}
-                    className="w-full border-b border-border pb-2 text-gray-400"
+                    className="min-h-[88px] rounded-[18px] border border-border bg-cardAlt px-4 py-4 text-base text-white"
+                    multiline
+                    textAlignVertical="top"
                   />
                   <View className="flex-row gap-2">
                     <Pressable
                       onPress={handleSaveEdit}
-                      className="flex-1 bg-green-600 p-3 rounded-xl items-center"
+                      className="flex-1 items-center rounded-[18px] p-4"
+                      style={{ backgroundColor: budgetTheme.accent }}
                     >
-                      <Text className="text-white font-semibold">Save</Text>
+                      <Text
+                        className="font-semibold"
+                        style={{ color: budgetTheme.onAccent }}
+                      >
+                        Save
+                      </Text>
                     </Pressable>
                     <Pressable
                       onPress={handleCancelEdit}
-                      className="flex-1 bg-[#2a2a2a] p-3 rounded-xl items-center"
+                      className="flex-1 items-center rounded-[18px] bg-cardAlt p-4"
                     >
                       <Text className="text-gray-300 font-semibold">
                         Cancel
@@ -1031,78 +1101,188 @@ export default function Dashboard() {
 
         <Modal
           transparent
-          animationType="fade"
-          visible={showAddCard}
-          onRequestClose={() => setShowAddCard(false)}
+          animationType="none"
+          visible={showAddSheet}
+          onRequestClose={closeAddSheet}
         >
           <KeyboardAvoidingView
             behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
+            className="flex-1 justify-end"
           >
-            <Pressable
-              className="flex-1 bg-black/60 justify-end px-6 pb-8"
-              onPress={() => setShowAddCard(false)}
+            <Animated.View
+              className="absolute inset-0 bg-black"
+              style={addSheetBackdropStyle}
             >
               <Pressable
-                className="bg-background border border-border rounded-3xl p-5 gap-4"
-                onPress={() => {}}
+                className="flex-1"
+                onPress={closeAddSheet}
+              />
+            </Animated.View>
+            <Animated.View
+              className="rounded-t-[32px] border-t border-border bg-background px-6 pt-4"
+              style={[
+                addSheetStyle,
+                {
+                  maxHeight: "82%",
+                  paddingBottom: Math.max(insets.bottom, 20),
+                },
+              ]}
+            >
+              <View className="items-center pb-3">
+                <View className="h-1.5 w-14 rounded-full bg-white/10" />
+              </View>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 20, paddingBottom: 8 }}
               >
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-400 uppercase tracking-wider">
-                    New transaction
-                  </Text>
-                  <Pressable onPress={() => setShowAddCard(false)}>
-                    <Text className="text-xs text-gray-400">Close</Text>
+                <View className="flex-row items-center justify-between gap-3">
+                  <View className="min-w-0 flex-1 gap-1">
+                    <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                      Quick log
+                    </Text>
+                    <Text className="text-2xl font-bold text-white">
+                      Add transaction
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={closeAddSheet}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
+                  >
+                    <Text className="text-sm font-medium text-gray-300">
+                      Close
+                    </Text>
                   </Pressable>
                 </View>
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ gap: 16, paddingBottom: 8 }}
-                >
-                  <AmountToggle
-                    amount={amount}
-                    setAmount={setAmount}
-                    isIncome={isIncome}
-                    setIsIncome={setIsIncome}
-                  />
-                  <CategoryGrid
-                    selected={selectedCat}
-                    onSelect={setSelectedCat}
-                    allowedCategories={
-                      isIncome ? reimbursementCategories : undefined
-                    }
-                  />
+
+                <View className="rounded-[28px] border border-border bg-cardAlt px-5 py-5">
+                  <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Amount
+                  </Text>
+                  <View className="mt-3 min-h-[64px] flex-row items-end">
+                    <Text className="pb-2 pr-2 text-[32px] font-bold leading-[36px] text-gray-500">
+                      $
+                    </Text>
+                    <TextInput
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor="#6b7280"
+                      className="flex-1 text-[52px] font-bold leading-[60px] text-white"
+                      value={amount}
+                      onChangeText={setAmount}
+                      autoFocus
+                      style={{ paddingTop: 6, paddingBottom: 1 }}
+                    />
+                  </View>
+                </View>
+
+                <View className="gap-3">
+                  <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Category
+                  </Text>
+                  <View className="flex-row flex-wrap gap-3">
+                    {quickLogCategories.map((cat) => {
+                      const isSelected = selectedCat === cat;
+                      const styles = CATEGORY_STYLES[cat];
+                      const textStyle = isSelected
+                        ? CATEGORY_TEXT_COLORS[cat].selected
+                        : CATEGORY_TEXT_COLORS[cat].badge;
+
+                      return (
+                        <Pressable
+                          key={cat}
+                          onPress={() => setSelectedCat(cat)}
+                          className="rounded-full border px-4 py-3"
+                          style={{
+                            backgroundColor: isSelected
+                              ? styles.selectedBg
+                              : styles.unselectedBg,
+                            borderColor: isSelected
+                              ? styles.selectedBg
+                              : "rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          <Text className={`text-sm font-semibold ${textStyle}`}>
+                            {cat}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View className="gap-3">
+                  <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Note
+                  </Text>
                   <TextInput
-                    placeholder="Note (optional)"
+                    placeholder="Optional note"
                     placeholderTextColor="#6b7280"
                     value={note}
                     onChangeText={setNote}
-                    className="w-full border-b border-border pb-2 text-gray-400"
+                    className="min-h-[88px] rounded-[18px] border border-border bg-cardAlt px-4 py-4 text-base text-white"
+                    multiline
+                    textAlignVertical="top"
                   />
-                  <Pressable
-                    onPress={async () => {
-                      const val = parseFloat(amount);
-                      if (!val || isNaN(val)) return;
-                      await handleAddTransaction();
-                      setShowAddCard(false);
-                    }}
-                    className={`w-full py-4 rounded-2xl shadow-lg items-center ${
-                      isIncome ? "bg-green-600" : "bg-red-600"
+                </View>
+
+                <Pressable
+                  onPress={handleSaveQuickTransaction}
+                  disabled={!canSaveQuickLog}
+                  className={`items-center rounded-[18px] py-4 ${
+                    canSaveQuickLog ? "" : "bg-[#2a2a2a]"
+                  }`}
+                  style={
+                    canSaveQuickLog
+                      ? { backgroundColor: budgetTheme.accent }
+                      : undefined
+                  }
+                >
+                  <Text
+                    className={`text-base font-bold ${
+                      canSaveQuickLog ? "" : "text-gray-500"
                     }`}
+                    style={
+                      canSaveQuickLog
+                        ? { color: budgetTheme.onAccent }
+                        : undefined
+                    }
                   >
-                    <Text className="text-white font-bold text-base">
-                      Add Transaction
-                    </Text>
-                  </Pressable>
-                </ScrollView>
-              </Pressable>
-            </Pressable>
+                    Save transaction
+                  </Text>
+                </Pressable>
+              </ScrollView>
+            </Animated.View>
           </KeyboardAvoidingView>
         </Modal>
       </KeyboardAvoidingView>
 
+      {viewMode === "day" ? (
+        <Pressable
+          onPress={() => setShowAddSheet(true)}
+          className="absolute right-6 h-16 w-16 items-center justify-center rounded-full border"
+          style={{
+            bottom: insets.bottom + 88,
+            backgroundColor: budgetTheme.accent,
+            borderColor: budgetTheme.accentBorderStrong,
+            shadowColor: "#000000",
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.24,
+            shadowRadius: 18,
+            elevation: 8,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Add transaction"
+        >
+          <Plus size={28} color={budgetTheme.onAccent} strokeWidth={2.5} />
+        </Pressable>
+      ) : null}
+
       {pendingDelete && (
-        <View className="absolute bottom-6 left-6 right-6 rounded-2xl bg-[#1a1a1a] border border-border px-4 py-3 flex-row items-center justify-between">
+        <View
+          className="absolute left-6 right-6 rounded-[18px] bg-card border border-border px-4 py-3 flex-row items-center justify-between"
+          style={{ bottom: insets.bottom + (viewMode === "day" ? 96 : 24) }}
+        >
           <Text className="text-sm text-gray-200">
             Deleted {pendingDelete.tx.category}
           </Text>
@@ -1119,32 +1299,46 @@ export default function Dashboard() {
             animationType="fade"
             visible={showDatePicker}
             onRequestClose={() => setShowDatePicker(false)}
-          >
-            <Pressable
-              className="flex-1 bg-black/60 justify-end"
-              onPress={() => setShowDatePicker(false)}
             >
               <Pressable
-                className="bg-[#1c1c1e] p-4 rounded-t-2xl"
-                onPress={() => {}}
+                className="flex-1 bg-black/60 justify-end"
+                onPress={() => setShowDatePicker(false)}
               >
-                <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-white text-base font-semibold">
-                    Select date
-                  </Text>
-                  <Pressable onPress={() => setShowDatePicker(false)}>
-                    <Text className="text-blue-400">Done</Text>
-                  </Pressable>
-                </View>
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display="inline"
-                  onChange={handleDateChange}
-                />
+                <Pressable
+                  className="rounded-t-[32px] border-t border-border bg-background px-6 pt-4"
+                  style={{ paddingBottom: Math.max(insets.bottom, 20) }}
+                  onPress={() => {}}
+                >
+                  <View className="items-center pb-3">
+                    <View className="h-1.5 w-14 rounded-full bg-white/10" />
+                  </View>
+                  <View className="mb-2 flex-row items-center justify-between">
+                    <View className="min-w-0 flex-1">
+                      <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Calendar
+                      </Text>
+                      <Text className="text-xl font-bold text-white">
+                        Select date
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setShowDatePicker(false)}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
+                    >
+                      <Text className="text-sm font-medium text-gray-300">
+                        Done
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <DateTimePicker
+                    value={selectedDate}
+                    mode="date"
+                    display="inline"
+                    onChange={handleDateChange}
+                  />
+                </Pressable>
               </Pressable>
-            </Pressable>
-          </Modal>
+            </Modal>
         ) : (
           <DateTimePicker
             value={selectedDate}

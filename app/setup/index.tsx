@@ -12,7 +12,10 @@ import {
   Modal,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Trash2, Plus, ArrowRight, CalendarDays } from "lucide-react-native";
@@ -29,6 +32,10 @@ import { PRIVACY_POLICY_URL, SUPPORT_URL } from "../../src/constants/urls";
 import { SetupHeader } from "../../components/setup/SetupHeader";
 import { BudgetPreviewCard } from "../../components/setup/BudgetPreviewCard";
 import { formatCurrency, parseMoneyInput } from "../../src/utils/format";
+import {
+  DEFAULT_BUDGET_THEME,
+  getBudgetTheme,
+} from "../../src/utils/budgetTheme";
 
 type SetupStepKey = "income" | "bills" | "savings" | "review";
 
@@ -43,8 +50,119 @@ type SetupStep = {
 
 const QUICK_BILLS = ["Rent", "Phone", "Car", "Insurance", "Utilities"];
 
+function StepCard({
+  children,
+  accentGlowColor = DEFAULT_BUDGET_THEME.accentGlowStrong,
+}: {
+  children: React.ReactNode;
+  accentGlowColor?: string;
+}) {
+  return (
+    <View className="overflow-hidden rounded-[32px] border border-border bg-card px-5 py-5">
+      <View
+        className="absolute -right-8 -top-8 h-24 w-24 rounded-full"
+        style={{ backgroundColor: accentGlowColor }}
+      />
+      <View className="absolute bottom-0 left-10 h-16 w-16 rounded-full bg-white/5" />
+      <View className="gap-5">{children}</View>
+    </View>
+  );
+}
+
+function StepIntro({
+  eyebrow,
+  title,
+  subtitle,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <View className="gap-2">
+      <Text className="text-xs font-semibold uppercase tracking-[1.2px] text-gray-500">
+        {eyebrow}
+      </Text>
+      <Text className="text-3xl font-bold leading-[36px] text-white">
+        {title}
+      </Text>
+      <Text className="text-sm leading-6 text-gray-400">{subtitle}</Text>
+    </View>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text className="text-xs font-semibold uppercase tracking-[1.1px] text-gray-500">
+      {children}
+    </Text>
+  );
+}
+
+function ToggleCard({
+  label,
+  description,
+  value,
+  onPress,
+  accentSurfaceColor = DEFAULT_BUDGET_THEME.accentSurface,
+  accentTextColor = DEFAULT_BUDGET_THEME.accentText,
+  activeColor = DEFAULT_BUDGET_THEME.accent,
+  activeThumbColor = DEFAULT_BUDGET_THEME.onAccent,
+}: {
+  label: string;
+  description: string;
+  value: boolean;
+  onPress: () => void;
+  accentSurfaceColor?: string;
+  accentTextColor?: string;
+  activeColor?: string;
+  activeThumbColor?: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className="rounded-[28px] border border-border bg-cardAlt px-4 py-4"
+    >
+      <View className="flex-row items-center justify-between gap-4">
+        <View className="min-w-0 flex-1 gap-2">
+          <View className="flex-row items-center gap-2">
+            <Text className="text-base font-semibold text-white">{label}</Text>
+            <Text
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                value ? "" : "bg-white/5 text-gray-400"
+              }`}
+              style={
+                value
+                  ? {
+                      backgroundColor: accentSurfaceColor,
+                      color: accentTextColor,
+                    }
+                  : undefined
+              }
+            >
+              {value ? "On" : "Off"}
+            </Text>
+          </View>
+          <Text className="text-sm leading-6 text-gray-400">{description}</Text>
+        </View>
+
+        <View
+          className={`h-8 w-14 rounded-full p-1 ${value ? "" : "bg-white/10"}`}
+          style={value ? { backgroundColor: activeColor } : undefined}
+        >
+          <View
+            className={`h-6 w-6 rounded-full ${value ? "ml-6" : "ml-0 bg-white"}`}
+            style={value ? { backgroundColor: activeThumbColor } : undefined}
+          />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function SetupWizard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [stepIndex, setStepIndex] = useState(0);
 
   const [monthlyIncome, setMonthlyIncome] = useState<string>("");
@@ -97,6 +215,11 @@ export default function SetupWizard() {
   });
   const dailyBudget =
     previewFinancials.availableToSpend / Math.max(1, daysInMonth(startDate));
+  const previewTheme = getBudgetTheme(
+    monthlyIncomeNumber > 0
+      ? previewFinancials.availableToSpend / monthlyIncomeNumber
+      : 1
+  );
 
   const addBill = (name = "") => {
     setBills((prev) => [...prev, { id: generateId(), name, amount: 0 }]);
@@ -187,274 +310,417 @@ export default function SetupWizard() {
   };
 
   const renderAbout = () => (
-    <View className="pt-4 border-t border-border mt-2">
-      <Text className="text-xs text-gray-500 uppercase tracking-wider">About</Text>
-      <View className="flex-row gap-4 mt-2">
-        <Pressable onPress={() => openExternal(PRIVACY_POLICY_URL)}>
-          <Text className="text-sm text-blue-400">Privacy Policy</Text>
+    <View className="rounded-[28px] border border-white/8 bg-white/5 px-4 py-4">
+      <Text className="text-xs font-semibold uppercase tracking-[1.1px] text-gray-500">
+        About
+      </Text>
+      <Text className="mt-2 text-sm leading-6 text-gray-400">
+        Privacy, support, and account details are always available after setup.
+      </Text>
+      <View className="mt-4 flex-row flex-wrap gap-2">
+        <Pressable
+          onPress={() => openExternal(PRIVACY_POLICY_URL)}
+          className="rounded-full border border-white/10 bg-white/5 px-4 py-3"
+        >
+          <Text className="text-sm font-semibold text-gray-200">Privacy policy</Text>
         </Pressable>
-        <Pressable onPress={() => openExternal(SUPPORT_URL)}>
-          <Text className="text-sm text-blue-400">Support</Text>
+        <Pressable
+          onPress={() => openExternal(SUPPORT_URL)}
+          className="rounded-full border border-white/10 bg-white/5 px-4 py-3"
+        >
+          <Text className="text-sm font-semibold text-gray-200">Support</Text>
         </Pressable>
       </View>
     </View>
   );
 
   const renderIncomeStep = () => (
-    <View className="gap-5">
-      <View>
-        <Text className="text-white text-2xl font-bold">Set up your budget</Text>
-        <Text className="text-gray-400 mt-1">A quick setup to start tracking today.</Text>
-      </View>
+    <View className="gap-4">
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <StepIntro
+          eyebrow="Foundation"
+          title="Set your monthly runway"
+          subtitle="A few numbers power the hero card, daily allowance, and the faster logging flow."
+        />
 
-      <View className="gap-2">
-        <Text className="text-sm text-gray-300">Monthly income</Text>
-        <View className="flex-row items-center bg-borderAlt border border-border rounded-xl px-4">
-          <Text className="text-white text-xl mr-2">$</Text>
-          <TextInput
-            keyboardType="decimal-pad"
-            value={monthlyIncome}
-            onChangeText={onIncomeChange}
-            placeholder="5000"
-            placeholderTextColor="#6b7280"
-            className="flex-1 text-white text-xl py-4"
-          />
+        <View className="gap-3">
+          <FieldLabel>Monthly income</FieldLabel>
+          <View className="rounded-[28px] border border-border bg-cardAlt px-5 py-5">
+            <View className="min-h-[64px] flex-row items-end">
+              <Text className="pb-2 pr-2 text-[32px] font-bold leading-[36px] text-gray-500">$</Text>
+              <TextInput
+                keyboardType="decimal-pad"
+                value={monthlyIncome}
+                onChangeText={onIncomeChange}
+                placeholder="5000"
+                placeholderTextColor="#6b7280"
+                className="flex-1 text-[52px] font-bold leading-[60px] text-white"
+                style={{ paddingTop: 6, paddingBottom: 0.2 }}
+              />
+            </View>
+          </View>
+          {!!errors.income && (
+            <Text className="text-sm text-orange-300">{errors.income}</Text>
+          )}
         </View>
-        {!!errors.income && <Text className="text-red-400 text-xs">{errors.income}</Text>}
-      </View>
 
-      <View className="gap-2">
-        <Text className="text-sm text-gray-300">Month start date</Text>
-        <Pressable
-          onPress={() => setShowDatePicker(true)}
-          className="bg-borderAlt border border-border rounded-xl px-4 py-4 flex-row items-center justify-between"
-        >
-          <Text className="text-white text-base">
-            {new Date(`${startDate}T00:00:00`).toLocaleDateString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </Text>
-          <CalendarDays size={18} color="#9ca3af" />
-        </Pressable>
-      </View>
+        <View className="gap-3">
+          <FieldLabel>Month start date</FieldLabel>
+          <Pressable
+            onPress={() => setShowDatePicker(true)}
+            className="rounded-[28px] border border-border bg-cardAlt px-5 py-5"
+          >
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="min-w-0 flex-1 gap-1">
+                <Text className="text-lg font-semibold text-white">
+                  {new Date(`${startDate}T00:00:00`).toLocaleDateString("en-US", {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </Text>
+                <Text className="text-sm text-gray-400">
+                  This sets the monthly budget cycle.
+                </Text>
+              </View>
+              <View className="h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+                <CalendarDays size={18} color="#d1d5db" />
+              </View>
+            </View>
+          </Pressable>
+        </View>
+      </StepCard>
 
-      <View className="gap-2">
-        <Text className="text-sm text-gray-300">Rollover unspent budget</Text>
-        <Pressable
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <FieldLabel>Behavior</FieldLabel>
+        <ToggleCard
+          label="Rollover unspent budget"
+          description="Unused daily allowance carries into later days so the month feels less rigid."
+          value={rolloverUnspent}
           onPress={() => setRolloverUnspent((prev) => !prev)}
-          className="w-full bg-borderAlt p-4 rounded-xl border border-border flex-row items-center justify-between"
-        >
-          <Text className="text-gray-300 flex-1 mr-3">
-            Unused daily allowance carries into remaining days.
-          </Text>
-          <View
-            className={`w-12 h-7 rounded-full p-1 ${
-              rolloverUnspent ? "bg-green-600" : "bg-[#2a2a2a]"
-            }`}
-          >
-            <View
-              className={`w-5 h-5 rounded-full bg-white ${
-                rolloverUnspent ? "ml-5" : "ml-0"
-              }`}
-            />
-          </View>
-        </Pressable>
-      </View>
-
-      <View className="gap-2">
-        <Text className="text-sm text-gray-300">Spare money mode</Text>
-        <Pressable
+          accentSurfaceColor={previewTheme.accentSurface}
+          accentTextColor={previewTheme.accentText}
+          activeColor={previewTheme.accent}
+          activeThumbColor={previewTheme.onAccent}
+        />
+        <ToggleCard
+          label="Spare money mode"
+          description="Default the app to discretionary spending and hide income and fixed bills until you need them."
+          value={spareMoneyMode}
           onPress={() => setSpareMoneyMode((prev) => !prev)}
-          className="w-full bg-borderAlt p-4 rounded-xl border border-border flex-row items-center justify-between"
-        >
-          <Text className="text-gray-300 flex-1 mr-3">
-            Focus on discretionary spending and hide income and set bills by default.
-          </Text>
-          <View
-            className={`w-12 h-7 rounded-full p-1 ${
-              spareMoneyMode ? "bg-green-600" : "bg-[#2a2a2a]"
-            }`}
-          >
-            <View
-              className={`w-5 h-5 rounded-full bg-white ${
-                spareMoneyMode ? "ml-5" : "ml-0"
-              }`}
-            />
-          </View>
-        </Pressable>
-      </View>
+          accentSurfaceColor={previewTheme.accentSurface}
+          accentTextColor={previewTheme.accentText}
+          activeColor={previewTheme.accent}
+          activeThumbColor={previewTheme.onAccent}
+        />
+      </StepCard>
     </View>
   );
 
   const renderBillsStep = () => (
-    <View className="gap-5">
-      <View>
-        <Text className="text-white text-2xl font-bold">Add recurring bills</Text>
-        <Text className="text-gray-400 mt-1">Optional now, easy to edit later.</Text>
-      </View>
+    <View className="gap-4">
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <StepIntro
+          eyebrow="Fixed costs"
+          title="Add the bills that always show up"
+          subtitle="Optional now, but useful if you want the leftover number to feel more realistic on day one."
+        />
 
-      <View className="flex-row flex-wrap gap-2">
-        {QUICK_BILLS.map((name) => (
-          <Pressable
-            key={name}
-            onPress={() => addBill(name)}
-            className="px-3 py-2 rounded-full border border-border bg-borderAlt"
-          >
-            <Text className="text-xs text-gray-200">+ {name}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <View className="gap-3">
-        {bills.map((bill) => (
-          <View
-            key={bill.id}
-            className="bg-borderAlt border border-border rounded-xl p-3 flex-row items-center gap-3"
-          >
-            <TextInput
-              value={bill.name}
-              onChangeText={(text) => updateBill(bill.id, "name", text)}
-              placeholder="Bill name"
-              placeholderTextColor="#6b7280"
-              className="flex-1 text-white"
-            />
-
-            <View className="flex-row items-center bg-[#202020] rounded-lg px-2 w-28">
-              <Text className="text-gray-300 mr-1">$</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                value={bill.amount ? String(bill.amount) : ""}
-                onChangeText={(text) => updateBill(bill.id, "amount", text)}
-                placeholder="0"
-                placeholderTextColor="#6b7280"
-                className="flex-1 text-white py-2 text-right"
-              />
-            </View>
-
-            <Pressable onPress={() => removeBill(bill.id)} className="p-1" hitSlop={6}>
-              <Trash2 size={18} color="#ef4444" />
+        <View className="flex-row flex-wrap gap-2">
+          {QUICK_BILLS.map((name) => (
+            <Pressable
+              key={name}
+              onPress={() => addBill(name)}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-3"
+            >
+              <Text className="text-sm font-semibold text-gray-200">+ {name}</Text>
             </Pressable>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      </StepCard>
 
-      <Pressable
-        onPress={() => addBill()}
-        className="self-start flex-row items-center gap-2 px-3 py-2 rounded-lg border border-border"
-      >
-        <Plus size={16} color="#9ca3af" />
-        <Text className="text-sm text-gray-300">Add bill</Text>
-      </Pressable>
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <View className="flex-row items-center justify-between gap-3">
+          <View className="min-w-0 flex-1">
+            <FieldLabel>Recurring bills</FieldLabel>
+            <Text className="mt-1 text-sm text-gray-400">
+              Keep the list lean. You can edit everything later.
+            </Text>
+          </View>
+          <Text className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-300">
+            {bills.length} rows
+          </Text>
+        </View>
+
+        <View className="gap-3">
+          {bills.map((bill) => (
+            <View
+              key={bill.id}
+              className="rounded-[28px] border border-border bg-cardAlt px-4 py-4"
+            >
+              <View className="flex-row items-center gap-3">
+                <TextInput
+                  value={bill.name}
+                  onChangeText={(text) => updateBill(bill.id, "name", text)}
+                  placeholder="Bill name"
+                  placeholderTextColor="#6b7280"
+                  className="flex-1 text-lg font-semibold text-white"
+                  style={{ paddingVertical: 0 }}
+                />
+                <Pressable
+                  onPress={() => removeBill(bill.id)}
+                  className="h-10 w-10 items-center justify-center rounded-full border border-white/8 bg-white/5"
+                  hitSlop={6}
+                >
+                  <Trash2 size={18} color="#fb923c" />
+                </Pressable>
+              </View>
+
+              <View className="mt-4 rounded-[22px] border border-white/8 bg-white/5 px-4 py-4">
+                <View className="flex-row items-center">
+                  <Text className="mr-2 text-xl font-semibold text-gray-400">$</Text>
+                  <TextInput
+                    keyboardType="decimal-pad"
+                    value={bill.amount ? String(bill.amount) : ""}
+                    onChangeText={(text) => updateBill(bill.id, "amount", text)}
+                    placeholder="0"
+                    placeholderTextColor="#6b7280"
+                    className="flex-1 text-2xl font-semibold text-white"
+                    style={{ paddingVertical: 0 }}
+                  />
+                </View>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <Pressable
+          onPress={() => addBill()}
+          className="flex-row items-center justify-center gap-2 rounded-[24px] border border-white/10 bg-white/5 px-4 py-4"
+        >
+          <Plus size={16} color="#d1d5db" />
+          <Text className="text-sm font-semibold text-gray-200">Add custom bill</Text>
+        </Pressable>
+      </StepCard>
     </View>
   );
 
   const renderSavingsStep = () => (
-    <View className="gap-5">
-      <View>
-        <Text className="text-white text-2xl font-bold">Savings target</Text>
-        <Text className="text-gray-400 mt-1">Pick a percent or fixed amount.</Text>
-      </View>
+    <View className="gap-4">
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <StepIntro
+          eyebrow="Savings"
+          title="Choose what to keep for later"
+          subtitle="A percent is better if income changes. A fixed amount is better if you want a firm rule."
+        />
 
-      <View className="flex-row bg-borderAlt p-1 rounded-lg">
-        <Pressable
-          onPress={() => setSavingsMode("percent")}
-          className={`flex-1 py-2 rounded-md items-center ${
-            savingsMode === "percent" ? "bg-green-600" : ""
-          }`}
-        >
-          <Text className={savingsMode === "percent" ? "text-white" : "text-gray-400"}>
-            Percent
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setSavingsMode("fixed")}
-          className={`flex-1 py-2 rounded-md items-center ${
-            savingsMode === "fixed" ? "bg-green-600" : ""
-          }`}
-        >
-          <Text className={savingsMode === "fixed" ? "text-white" : "text-gray-400"}>
-            Fixed
-          </Text>
-        </Pressable>
-      </View>
-
-      <View className="gap-2">
-        <Text className="text-sm text-gray-300">
-          {savingsMode === "percent" ? "Savings percent" : "Savings amount"}
-        </Text>
-        <View className="flex-row items-center bg-borderAlt border border-border rounded-xl px-4">
-          <Text className="text-white mr-2">{savingsMode === "percent" ? "%" : "$"}</Text>
-          <TextInput
-            keyboardType="decimal-pad"
-            value={savingsValue}
-            onChangeText={onSavingsValueChange}
-            placeholder={savingsMode === "percent" ? "20" : "500"}
-            placeholderTextColor="#6b7280"
-            className="flex-1 text-white py-4 text-lg"
-          />
+        <View className="rounded-full border border-white/10 bg-cardAlt p-1">
+          <View className="flex-row">
+            <Pressable
+              onPress={() => setSavingsMode("percent")}
+              className="flex-1 rounded-full py-3 items-center"
+              style={
+                savingsMode === "percent"
+                  ? { backgroundColor: previewTheme.accent }
+                  : undefined
+              }
+            >
+              <Text
+                className={`font-semibold ${
+                  savingsMode === "percent" ? "" : "text-gray-400"
+                }`}
+                style={
+                  savingsMode === "percent"
+                    ? { color: previewTheme.onAccent }
+                    : undefined
+                }
+              >
+                Percent
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setSavingsMode("fixed")}
+              className="flex-1 rounded-full py-3 items-center"
+              style={
+                savingsMode === "fixed"
+                  ? { backgroundColor: previewTheme.accent }
+                  : undefined
+              }
+            >
+              <Text
+                className={`font-semibold ${
+                  savingsMode === "fixed" ? "" : "text-gray-400"
+                }`}
+                style={
+                  savingsMode === "fixed"
+                    ? { color: previewTheme.onAccent }
+                    : undefined
+                }
+              >
+                Fixed
+              </Text>
+            </Pressable>
+          </View>
         </View>
-        {savingsMode === "percent" && (
-          <Text className="text-xs text-gray-500">Percent is capped between 0 and 100.</Text>
-        )}
-      </View>
 
-      <View className="flex-row items-center gap-3">
-        <Pressable
-          onPress={() => {
-            setSavingsMode("fixed");
-            setSavingsValue("0");
-          }}
-          className="px-3 py-2 rounded-full border border-border bg-borderAlt"
-        >
-          <Text className="text-xs text-gray-200">None (0)</Text>
-        </Pressable>
-        <Text className="text-gray-400 text-sm">
-          Estimated savings: <Text className="text-green-500 font-semibold">{formatCurrency(savingsAmount)}</Text>
-        </Text>
-      </View>
+        <View className="gap-3">
+          <FieldLabel>
+            {savingsMode === "percent" ? "Savings percent" : "Savings amount"}
+          </FieldLabel>
+          <View className="rounded-[28px] border border-border bg-cardAlt px-5 py-5">
+            <View className="flex-row items-center">
+              <Text className="pr-2 text-3xl font-bold text-gray-500">
+                {savingsMode === "percent" ? "%" : "$"}
+              </Text>
+              <TextInput
+                keyboardType="decimal-pad"
+                value={savingsValue}
+                onChangeText={onSavingsValueChange}
+                placeholder={savingsMode === "percent" ? "20" : "500"}
+                placeholderTextColor="#6b7280"
+                className="flex-1 text-5xl font-bold text-white"
+                style={{ paddingVertical: 0 }}
+              />
+            </View>
+          </View>
+          {savingsMode === "percent" ? (
+            <Text className="text-sm text-gray-500">
+              Percent is capped between 0 and 100.
+            </Text>
+          ) : null}
+        </View>
+
+        <View className="flex-row flex-wrap items-center gap-2">
+          <Pressable
+            onPress={() => {
+              setSavingsMode("fixed");
+              setSavingsValue("0");
+            }}
+            className="rounded-full border border-white/10 bg-white/5 px-4 py-3"
+          >
+            <Text className="text-sm font-semibold text-gray-200">No savings</Text>
+          </Pressable>
+          <View
+            className="rounded-full border px-4 py-3"
+            style={{
+              borderColor: previewTheme.accentBorder,
+              backgroundColor: previewTheme.accentSurface,
+            }}
+          >
+            <Text
+              className="text-sm font-semibold"
+              style={{ color: previewTheme.accentText }}
+            >
+              Estimated savings {formatCurrency(savingsAmount)}
+            </Text>
+          </View>
+        </View>
+      </StepCard>
     </View>
   );
 
   const renderReviewStep = () => (
-    <View className="gap-5">
-      <View>
-        <Text className="text-white text-2xl font-bold">Review your setup</Text>
-        <Text className="text-gray-400 mt-1">You can update any of this later.</Text>
-      </View>
+    <View className="gap-4">
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <StepIntro
+          eyebrow="Ready"
+          title="Review your monthly setup"
+          subtitle="This is the baseline the app will use for the new hero card and your daily spend guidance."
+        />
 
-      <View className="bg-card border border-border rounded-2xl p-4 gap-3">
-        <View className="flex-row justify-between">
-          <Text className="text-gray-300">Month starts</Text>
-          <Text className="text-white font-medium">{startDate}</Text>
+        <View className="rounded-[28px] border border-border bg-cardAlt px-4 py-4 gap-3">
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-sm text-gray-400">Month starts</Text>
+            <Text className="text-sm font-semibold text-white">{startDate}</Text>
+          </View>
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-sm text-gray-400">Rollover</Text>
+            <Text className="text-sm font-semibold text-white">
+              {rolloverUnspent ? "On" : "Off"}
+            </Text>
+          </View>
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-sm text-gray-400">Spare money mode</Text>
+            <Text className="text-sm font-semibold text-white">
+              {spareMoneyMode ? "On" : "Off"}
+            </Text>
+          </View>
+          <View className="flex-row items-center justify-between gap-4">
+            <Text className="text-sm text-gray-400">Active bills</Text>
+            <Text className="text-sm font-semibold text-white">
+              {normalizedBills.length}
+            </Text>
+          </View>
         </View>
-        <View className="flex-row justify-between">
-          <Text className="text-gray-300">Rollover</Text>
-          <Text className="text-white font-medium">{rolloverUnspent ? "On" : "Off"}</Text>
-        </View>
-        <View className="flex-row justify-between">
-          <Text className="text-gray-300">Spare money mode</Text>
-          <Text className="text-white font-medium">{spareMoneyMode ? "On" : "Off"}</Text>
-        </View>
-        <View className="flex-row justify-between">
-          <Text className="text-gray-300">Active bills</Text>
-          <Text className="text-white font-medium">{normalizedBills.length}</Text>
-        </View>
-      </View>
+      </StepCard>
 
-      <View className="bg-green-600/10 border border-green-500/30 rounded-2xl p-4">
-        <Text className="text-green-300 text-xs uppercase tracking-wider">Daily budget</Text>
-        <Text className="text-white text-3xl font-bold mt-1">{formatCurrency(dailyBudget)}</Text>
-      </View>
+      <StepCard accentGlowColor={previewTheme.accentGlowStrong}>
+        <FieldLabel>Daily target</FieldLabel>
+        <Text className="text-5xl font-bold text-white">{formatCurrency(dailyBudget)}</Text>
+        <Text className="text-sm leading-6 text-gray-400">
+          This is your estimated per-day spend target before transaction history starts changing it.
+        </Text>
+        <View className="flex-row flex-wrap gap-2">
+          <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
+            <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Income
+            </Text>
+            <Text
+              className="mt-1 text-base font-semibold"
+              style={{ color: previewTheme.accentText }}
+            >
+              {formatCurrency(monthlyIncomeNumber)}
+            </Text>
+          </View>
+          <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
+            <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Bills
+            </Text>
+            <Text className="mt-1 text-base font-semibold text-white">
+              {formatCurrency(previewFinancials.billsTotal)}
+            </Text>
+          </View>
+          <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
+            <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              Savings
+            </Text>
+            <Text className="mt-1 text-base font-semibold text-white">
+              {formatCurrency(previewFinancials.savingsAmount)}
+            </Text>
+          </View>
+        </View>
+      </StepCard>
     </View>
   );
 
   const steps: SetupStep[] = [
-    { key: "income", title: "Income", renderContent: renderIncomeStep, canNext: monthlyIncomeNumber > 0 },
-    { key: "bills", title: "Bills", renderContent: renderBillsStep, canNext: true, optional: true },
-    { key: "savings", title: "Savings", renderContent: renderSavingsStep, canNext: true, optional: true },
-    { key: "review", title: "Review", renderContent: renderReviewStep, canNext: true, ctaLabel: "Start tracking" },
+    {
+      key: "income",
+      title: "Income",
+      renderContent: renderIncomeStep,
+      canNext: monthlyIncomeNumber > 0,
+    },
+    {
+      key: "bills",
+      title: "Bills",
+      renderContent: renderBillsStep,
+      canNext: true,
+      optional: true,
+    },
+    {
+      key: "savings",
+      title: "Savings",
+      renderContent: renderSavingsStep,
+      canNext: true,
+      optional: true,
+    },
+    {
+      key: "review",
+      title: "Review",
+      renderContent: renderReviewStep,
+      canNext: true,
+      ctaLabel: "Start tracking",
+    },
   ];
 
   const currentStep = steps[stepIndex];
@@ -476,6 +742,16 @@ export default function SetupWizard() {
 
   return (
     <SafeAreaView className="flex-1 bg-background">
+      <View pointerEvents="none" className="absolute inset-0">
+        <View
+          className="absolute -top-24 right-0 h-64 w-64 rounded-full"
+          style={{ backgroundColor: previewTheme.accentGlowStrong }}
+        />
+        <View
+          className="absolute bottom-20 -left-16 h-52 w-52 rounded-full"
+          style={{ backgroundColor: previewTheme.accentGlowSoft }}
+        />
+      </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
@@ -486,14 +762,22 @@ export default function SetupWizard() {
             totalSteps={steps.length}
             title={currentStep.title}
             onBack={goBack}
+            accentGlowColor={previewTheme.accentGlowStrong}
+            activeStepColor={previewTheme.accent}
           />
 
           <ScrollView
             className="flex-1"
-            contentContainerStyle={{ paddingTop: 20, paddingBottom: 28, gap: 20 }}
+            contentContainerStyle={{ paddingTop: 20, paddingBottom: 32, gap: 20 }}
             keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            <Animated.View entering={FadeInDown.duration(220)}>{currentStep.renderContent()}</Animated.View>
+            <Animated.View
+              key={currentStep.key}
+              entering={FadeInDown.duration(220)}
+            >
+              {currentStep.renderContent()}
+            </Animated.View>
 
             <BudgetPreviewCard
               monthlyIncome={monthlyIncomeNumber}
@@ -501,28 +785,59 @@ export default function SetupWizard() {
               bills={normalizedBills}
               savingsGoal={normalizedSavingsGoal}
               spareMoneyMode={spareMoneyMode}
+              accentGlowColor={previewTheme.accentGlowStrong}
+              accentSurfaceColor={previewTheme.accentSurface}
+              accentBorderColor={previewTheme.accentBorder}
+              accentTextColor={previewTheme.accentText}
             />
 
             {renderAbout()}
           </ScrollView>
         </View>
 
-        <View className="px-6 pb-6 pt-4 border-t border-border bg-background gap-3">
-          {currentStep.optional && !isLastStep && (
-            <Pressable onPress={() => setStepIndex((prev) => Math.min(steps.length - 1, prev + 1))}>
-              <Text className="text-center text-gray-400">Skip for now</Text>
+        <View
+          className="border-t border-white/8 bg-background px-6 pt-4"
+          style={{ paddingBottom: Math.max(insets.bottom, 20) }}
+        >
+          {currentStep.optional && !isLastStep ? (
+            <Pressable
+              onPress={() =>
+                setStepIndex((prev) => Math.min(steps.length - 1, prev + 1))
+              }
+              className="mb-3 self-center rounded-full border border-white/10 bg-white/5 px-4 py-2"
+            >
+              <Text className="text-sm font-medium text-gray-400">Skip for now</Text>
             </Pressable>
-          )}
+          ) : null}
 
           <Pressable
             onPress={goNext}
             disabled={!currentStep.canNext}
-            className={`w-full p-4 rounded-xl flex-row items-center justify-center gap-2 ${
-              currentStep.canNext ? "bg-green-600" : "bg-green-800/40"
+            className={`w-full rounded-[24px] p-4 flex-row items-center justify-center gap-2 ${
+              currentStep.canNext ? "" : "bg-cardAlt"
             }`}
+            style={
+              currentStep.canNext
+                ? { backgroundColor: previewTheme.accent }
+                : undefined
+            }
           >
-            <Text className="font-bold text-white">{currentStep.ctaLabel ?? (isLastStep ? "Finish" : "Next")}</Text>
-            <ArrowRight size={18} color="#ffffff" />
+            <Text
+              className={`font-bold ${
+                currentStep.canNext ? "" : "text-gray-500"
+              }`}
+              style={
+                currentStep.canNext
+                  ? { color: previewTheme.onAccent }
+                  : undefined
+              }
+            >
+              {currentStep.ctaLabel ?? (isLastStep ? "Finish" : "Next")}
+            </Text>
+            <ArrowRight
+              size={18}
+              color={currentStep.canNext ? previewTheme.onAccent : "#6b7280"}
+            />
           </Pressable>
         </View>
 
@@ -538,11 +853,28 @@ export default function SetupWizard() {
                 className="flex-1 bg-black/60 justify-end"
                 onPress={() => setShowDatePicker(false)}
               >
-                <Pressable className="bg-[#1c1c1e] p-4 rounded-t-2xl" onPress={() => {}}>
-                  <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-white text-base font-semibold">Select start date</Text>
-                    <Pressable onPress={() => setShowDatePicker(false)}>
-                      <Text className="text-blue-400">Done</Text>
+                <Pressable
+                  className="rounded-t-[32px] border-t border-border bg-background px-6 pt-4"
+                  style={{ paddingBottom: Math.max(insets.bottom, 20) }}
+                  onPress={() => {}}
+                >
+                  <View className="items-center pb-3">
+                    <View className="h-1.5 w-14 rounded-full bg-white/10" />
+                  </View>
+                  <View className="mb-2 flex-row items-center justify-between">
+                    <View className="min-w-0 flex-1">
+                      <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                        Calendar
+                      </Text>
+                      <Text className="text-xl font-bold text-white">
+                        Select start date
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setShowDatePicker(false)}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
+                    >
+                      <Text className="text-sm font-medium text-gray-300">Done</Text>
                     </Pressable>
                   </View>
                   <DateTimePicker

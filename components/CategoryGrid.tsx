@@ -28,29 +28,31 @@ export const CategoryGrid: React.FC<Props> = ({
   const categories = allowedCategories ?? CATEGORIES;
 
   return (
-    <View className="flex-row flex-wrap gap-2 mb-6">
+    <View className="mb-2 flex-row flex-wrap gap-3">
       {categories.map((cat) => {
         const isSelected = selected === cat;
         const styles = CATEGORY_STYLES[cat];
         const textStyle = isSelected
           ? CATEGORY_TEXT_COLORS[cat].selected
-          : CATEGORY_TEXT_COLORS[cat].unselected;
+          : CATEGORY_TEXT_COLORS[cat].badge;
 
         return (
           <Pressable
             key={cat}
             onPress={() => onSelect(cat)}
+            className="rounded-[22px] border px-3 py-4"
             style={{
-              width: "23%",
-              paddingVertical: 12,
-              borderRadius: 12,
+              width: "31%",
               alignItems: "center",
               backgroundColor: isSelected
                 ? styles.selectedBg
                 : styles.unselectedBg,
+              borderColor: isSelected
+                ? styles.selectedBg
+                : "rgba(255,255,255,0.08)",
             }}
           >
-            <Text className={`text-xs font-medium ${textStyle}`}>{cat}</Text>
+            <Text className={`text-sm font-semibold ${textStyle}`}>{cat}</Text>
           </Pressable>
         );
       })}
