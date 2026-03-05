@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,42 +9,141 @@ import {
   Platform,
   Linking,
   Alert,
+  Modal,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { Trash2, Plus, ArrowRight } from "lucide-react-native";
+import { Trash2, Plus, ArrowRight, CalendarDays } from "lucide-react-native";
 import { Bill, BudgetConfig, SavingsGoal } from "../../types";
 import {
   getTodayISO,
   saveConfig,
   regenerateSystemTransactions,
   generateId,
+  daysInMonth,
+  calculateFinancials,
 } from "../../lib/storage";
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from "../../src/constants/urls";
+import { SetupHeader } from "../../components/setup/SetupHeader";
+import { BudgetPreviewCard } from "../../components/setup/BudgetPreviewCard";
+import { formatCurrency, parseMoneyInput } from "../../src/utils/format";
+
+type SetupStepKey = "income" | "bills" | "savings" | "review";
+
+type SetupStep = {
+  key: SetupStepKey;
+  title: string;
+  renderContent: () => React.ReactNode;
+  canNext: boolean;
+  optional?: boolean;
+  ctaLabel?: string;
+};
+
+const QUICK_BILLS = ["Rent", "Phone", "Car", "Insurance", "Utilities"];
 
 export default function SetupWizard() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
+  const [stepIndex, setStepIndex] = useState(0);
 
-  // Form State
   const [monthlyIncome, setMonthlyIncome] = useState<string>("");
   const [startDate, setStartDate] = useState(getTodayISO());
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [bills, setBills] = useState<Bill[]>([
     { id: "1", name: "Rent", amount: 0 },
     { id: "2", name: "Phone", amount: 0 },
-    { id: "3", name: "Car Payment", amount: 0 },
   ]);
   const [savingsMode, setSavingsMode] = useState<"percent" | "fixed">("percent");
   const [savingsValue, setSavingsValue] = useState<string>("20");
   const [rolloverUnspent, setRolloverUnspent] = useState(true);
+  const [errors, setErrors] = useState<{ income?: string }>({});
 
-  // Helpers
-  const addBill = () =>
-    setBills([...bills, { id: generateId(), name: "", amount: 0 }]);
-  const removeBill = (id: string) => setBills(bills.filter((b) => b.id !== id));
-  const updateBill = (id: string, field: keyof Bill, val: string | number) => {
-    setBills(bills.map((b) => (b.id === id ? { ...b, [field]: val } : b)));
+  const monthlyIncomeNumber = parseFloat(monthlyIncome) || 0;
+
+  const parsedSavingsValue = parseFloat(savingsValue) || 0;
+  const clampedPercent = Math.min(100, Math.max(0, parsedSavingsValue));
+  const clampedFixed = Math.max(0, parsedSavingsValue);
+  const normalizedSavingsGoal: SavingsGoal =
+    savingsMode === "percent"
+      ? { mode: "percent", percent: clampedPercent }
+      : { mode: "fixed", amount: clampedFixed };
+
+  const savingsAmount =
+    normalizedSavingsGoal.mode === "percent"
+      ? monthlyIncomeNumber * (normalizedSavingsGoal.percent / 100)
+      : normalizedSavingsGoal.amount;
+
+  const normalizedBills = useMemo(
+    () =>
+      bills
+        .map((bill) => ({
+          ...bill,
+          name: bill.name.trim(),
+          amount: Math.abs(Number(bill.amount) || 0),
+        }))
+        .filter((bill) => bill.name.length > 0 && bill.amount > 0),
+    [bills]
+  );
+
+  const previewFinancials = calculateFinancials({
+    startDate,
+    monthlyIncome: monthlyIncomeNumber,
+    bills: normalizedBills,
+    savingsGoal: normalizedSavingsGoal,
+    rolloverUnspent,
+  });
+  const dailyBudget =
+    previewFinancials.availableToSpend / Math.max(1, daysInMonth(startDate));
+
+  const addBill = (name = "") => {
+    setBills((prev) => [...prev, { id: generateId(), name, amount: 0 }]);
+  };
+
+  const removeBill = (id: string) => {
+    setBills((prev) => prev.filter((bill) => bill.id !== id));
+  };
+
+  const updateBill = (id: string, field: keyof Bill, value: string) => {
+    setBills((prev) =>
+      prev.map((bill) => {
+        if (bill.id !== id) return bill;
+        if (field === "name") {
+          return { ...bill, name: value };
+        }
+        return {
+          ...bill,
+          amount: parseFloat(parseMoneyInput(value)) || 0,
+        };
+      })
+    );
+  };
+
+  const onIncomeChange = (value: string) => {
+    const parsed = parseMoneyInput(value);
+    setMonthlyIncome(parsed);
+
+    const incomeValue = parseFloat(parsed) || 0;
+    setErrors((prev) => ({
+      ...prev,
+      income: incomeValue > 0 ? undefined : "Monthly income must be more than $0.",
+    }));
+  };
+
+  const onSavingsValueChange = (value: string) => {
+    const parsed = parseMoneyInput(value);
+
+    if (savingsMode === "percent") {
+      const asNumber = parseFloat(parsed);
+      if (Number.isNaN(asNumber)) {
+        setSavingsValue("");
+        return;
+      }
+      setSavingsValue(String(Math.min(100, Math.max(0, asNumber))));
+      return;
+    }
+
+    setSavingsValue(parsed);
   };
 
   const openExternal = async (url: string) => {
@@ -55,13 +154,37 @@ export default function SetupWizard() {
         return;
       }
       await Linking.openURL(url);
-    } catch (error) {
+    } catch {
       Alert.alert("Unable to open link", "Please try again later.");
     }
   };
 
+  const handleDateChange = (_: unknown, selectedDate?: Date) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+
+    if (selectedDate) {
+      setStartDate(selectedDate.toLocaleDateString("en-CA"));
+    }
+  };
+
+  const handleSave = async () => {
+    const config: BudgetConfig = {
+      startDate,
+      monthlyIncome: monthlyIncomeNumber,
+      bills: normalizedBills,
+      savingsGoal: normalizedSavingsGoal,
+      rolloverUnspent,
+    };
+
+    await saveConfig(config);
+    await regenerateSystemTransactions(config);
+    router.replace("/");
+  };
+
   const renderAbout = () => (
-    <View className="pt-4 border-t border-border">
+    <View className="pt-4 border-t border-border mt-2">
       <Text className="text-xs text-gray-500 uppercase tracking-wider">About</Text>
       <View className="flex-row gap-4 mt-2">
         <Pressable onPress={() => openExternal(PRIVACY_POLICY_URL)}>
@@ -74,69 +197,54 @@ export default function SetupWizard() {
     </View>
   );
 
-  const getSavingsAmount = () => {
-    const inc = parseFloat(monthlyIncome) || 0;
-    const val = parseFloat(savingsValue) || 0;
-    return savingsMode === "percent" ? inc * (val / 100) : val;
-  };
-
-  const handleSave = async () => {
-    const savingsGoal: SavingsGoal =
-      savingsMode === "percent"
-        ? { mode: "percent", percent: parseFloat(savingsValue) || 0 }
-        : { mode: "fixed", amount: parseFloat(savingsValue) || 0 };
-
-    const config: BudgetConfig = {
-      startDate,
-      monthlyIncome: parseFloat(monthlyIncome) || 0,
-      bills: bills.filter((b) => b.name.trim() !== ""),
-      savingsGoal,
-      rolloverUnspent,
-    };
-
-    await saveConfig(config);
-    await regenerateSystemTransactions(config);
-    router.replace("/");
-  };
-
-  const renderStep1 = () => (
-    <Animated.View
-      entering={FadeInDown.duration(300)}
-      className="flex-1 justify-center"
-    >
-      <Text className="text-2xl font-bold text-white mb-6">
-        Let's get started
-      </Text>
+  const renderIncomeStep = () => (
+    <View className="gap-5">
       <View>
-        <Text className="text-gray-400 mb-2">Monthly Income</Text>
-        <TextInput
-          keyboardType="decimal-pad"
-          value={monthlyIncome}
-          onChangeText={setMonthlyIncome}
-          placeholder="e.g. 5000"
-          placeholderTextColor="#6b7280"
-          className="w-full bg-borderAlt p-4 rounded-xl text-white text-xl border border-border"
-        />
+        <Text className="text-white text-2xl font-bold">Set up your budget</Text>
+        <Text className="text-gray-400 mt-1">A quick setup to start tracking today.</Text>
       </View>
-      <View className="mt-6">
-        <Text className="text-gray-400 mb-2">Period start date</Text>
-        <TextInput
-          value={startDate}
-          onChangeText={setStartDate}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#6b7280"
-          keyboardType="numbers-and-punctuation"
-          className="w-full bg-borderAlt p-4 rounded-xl text-white text-xl border border-border"
-        />
+
+      <View className="gap-2">
+        <Text className="text-sm text-gray-300">Monthly income</Text>
+        <View className="flex-row items-center bg-borderAlt border border-border rounded-xl px-4">
+          <Text className="text-white text-xl mr-2">$</Text>
+          <TextInput
+            keyboardType="decimal-pad"
+            value={monthlyIncome}
+            onChangeText={onIncomeChange}
+            placeholder="5000"
+            placeholderTextColor="#6b7280"
+            className="flex-1 text-white text-xl py-4"
+          />
+        </View>
+        {!!errors.income && <Text className="text-red-400 text-xs">{errors.income}</Text>}
       </View>
-      <View className="mt-6">
-        <Text className="text-gray-400 mb-2">Rollover unspent budget</Text>
+
+      <View className="gap-2">
+        <Text className="text-sm text-gray-300">Month start date</Text>
+        <Pressable
+          onPress={() => setShowDatePicker(true)}
+          className="bg-borderAlt border border-border rounded-xl px-4 py-4 flex-row items-center justify-between"
+        >
+          <Text className="text-white text-base">
+            {new Date(`${startDate}T00:00:00`).toLocaleDateString("en-US", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </Text>
+          <CalendarDays size={18} color="#9ca3af" />
+        </Pressable>
+      </View>
+
+      <View className="gap-2">
+        <Text className="text-sm text-gray-300">Rollover unspent budget</Text>
         <Pressable
           onPress={() => setRolloverUnspent((prev) => !prev)}
           className="w-full bg-borderAlt p-4 rounded-xl border border-border flex-row items-center justify-between"
         >
           <Text className="text-gray-300 flex-1 mr-3">
-            Unused daily budget carries into remaining days.
+            Unused daily allowance carries into remaining days.
           </Text>
           <View
             className={`w-12 h-7 rounded-full p-1 ${
@@ -151,89 +259,87 @@ export default function SetupWizard() {
           </View>
         </Pressable>
       </View>
-      <Pressable
-        disabled={!monthlyIncome}
-        onPress={() => setStep(2)}
-        className={`w-full bg-green-600 p-4 rounded-xl mt-8 items-center ${
-          !monthlyIncome ? "opacity-50" : "opacity-100"
-        }`}
-      >
-        <Text className="font-bold text-white">Next</Text>
-      </Pressable>
-    </Animated.View>
+    </View>
   );
 
-  const renderStep2 = () => (
-    <Animated.View
-      entering={FadeInDown.duration(300)}
-      className="flex-1"
-    >
-      <Text className="text-2xl font-bold text-white mb-4">
-        Recurring Bills
-      </Text>
-      <ScrollView className="flex-1 mb-4">
-        <View className="gap-3">
-          {bills.map((bill) => (
-            <View key={bill.id} className="flex-row gap-2 items-center">
-              <TextInput
-                value={bill.name}
-                onChangeText={(text) => updateBill(bill.id, "name", text)}
-                placeholder="Bill Name"
-                placeholderTextColor="#6b7280"
-                className="flex-1 bg-borderAlt p-3 rounded-lg text-white border border-border"
-              />
+  const renderBillsStep = () => (
+    <View className="gap-5">
+      <View>
+        <Text className="text-white text-2xl font-bold">Add recurring bills</Text>
+        <Text className="text-gray-400 mt-1">Optional now, easy to edit later.</Text>
+      </View>
+
+      <View className="flex-row flex-wrap gap-2">
+        {QUICK_BILLS.map((name) => (
+          <Pressable
+            key={name}
+            onPress={() => addBill(name)}
+            className="px-3 py-2 rounded-full border border-border bg-borderAlt"
+          >
+            <Text className="text-xs text-gray-200">+ {name}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View className="gap-3">
+        {bills.map((bill) => (
+          <View
+            key={bill.id}
+            className="bg-borderAlt border border-border rounded-xl p-3 flex-row items-center gap-3"
+          >
+            <TextInput
+              value={bill.name}
+              onChangeText={(text) => updateBill(bill.id, "name", text)}
+              placeholder="Bill name"
+              placeholderTextColor="#6b7280"
+              className="flex-1 text-white"
+            />
+
+            <View className="flex-row items-center bg-[#202020] rounded-lg px-2 w-28">
+              <Text className="text-gray-300 mr-1">$</Text>
               <TextInput
                 keyboardType="decimal-pad"
                 value={bill.amount ? String(bill.amount) : ""}
-                onChangeText={(text) =>
-                  updateBill(bill.id, "amount", parseFloat(text) || 0)
-                }
-                placeholder="$"
+                onChangeText={(text) => updateBill(bill.id, "amount", text)}
+                placeholder="0"
                 placeholderTextColor="#6b7280"
-                className="w-24 bg-borderAlt p-3 rounded-lg text-white border border-border"
+                className="flex-1 text-white py-2 text-right"
               />
-              <Pressable onPress={() => removeBill(bill.id)} className="p-2">
-                <Trash2 size={20} color="#ef4444" />
-              </Pressable>
             </View>
-          ))}
-        </View>
-        <Pressable
-          onPress={addBill}
-          className="flex-row items-center gap-2 p-2 mt-3"
-        >
-          <Plus size={18} color="#22c55e" />
-          <Text className="text-green-500 font-medium">Add Bill</Text>
-        </Pressable>
-      </ScrollView>
+
+            <Pressable onPress={() => removeBill(bill.id)} className="p-1" hitSlop={6}>
+              <Trash2 size={18} color="#ef4444" />
+            </Pressable>
+          </View>
+        ))}
+      </View>
+
       <Pressable
-        onPress={() => setStep(3)}
-        className="w-full bg-green-600 p-4 rounded-xl items-center"
+        onPress={() => addBill()}
+        className="self-start flex-row items-center gap-2 px-3 py-2 rounded-lg border border-border"
       >
-        <Text className="font-bold text-white">Next</Text>
+        <Plus size={16} color="#9ca3af" />
+        <Text className="text-sm text-gray-300">Add bill</Text>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 
-  const renderStep3 = () => (
-    <Animated.View
-      entering={FadeInDown.duration(300)}
-      className="flex-1 justify-center"
-    >
-      <Text className="text-2xl font-bold text-white mb-6">Savings Goal</Text>
-      <View className="flex-row bg-borderAlt p-1 rounded-lg mb-6">
+  const renderSavingsStep = () => (
+    <View className="gap-5">
+      <View>
+        <Text className="text-white text-2xl font-bold">Savings target</Text>
+        <Text className="text-gray-400 mt-1">Pick a percent or fixed amount.</Text>
+      </View>
+
+      <View className="flex-row bg-borderAlt p-1 rounded-lg">
         <Pressable
           onPress={() => setSavingsMode("percent")}
           className={`flex-1 py-2 rounded-md items-center ${
             savingsMode === "percent" ? "bg-green-600" : ""
           }`}
         >
-          <Text
-            className={
-              savingsMode === "percent" ? "text-white" : "text-gray-400"
-            }
-          >
-            Percent (%)
+          <Text className={savingsMode === "percent" ? "text-white" : "text-gray-400"}>
+            Percent
           </Text>
         </Pressable>
         <Pressable
@@ -242,110 +348,189 @@ export default function SetupWizard() {
             savingsMode === "fixed" ? "bg-green-600" : ""
           }`}
         >
-          <Text
-            className={savingsMode === "fixed" ? "text-white" : "text-gray-400"}
-          >
-            Fixed ($)
+          <Text className={savingsMode === "fixed" ? "text-white" : "text-gray-400"}>
+            Fixed
           </Text>
         </Pressable>
       </View>
-      <View>
-        <Text className="text-gray-400 mb-2">
-          {savingsMode === "percent" ? "Percentage" : "Amount"}
+
+      <View className="gap-2">
+        <Text className="text-sm text-gray-300">
+          {savingsMode === "percent" ? "Savings percent" : "Savings amount"}
         </Text>
-        <TextInput
-          keyboardType="decimal-pad"
-          value={savingsValue}
-          onChangeText={setSavingsValue}
-          className="w-full bg-borderAlt p-4 rounded-xl text-white text-xl border border-border"
-        />
-        <Text className="text-gray-500 mt-2">
-          Approximated savings:{" "}
-          <Text className="text-green-500 font-bold">
-            ${getSavingsAmount().toFixed(0)}
-          </Text>
+        <View className="flex-row items-center bg-borderAlt border border-border rounded-xl px-4">
+          <Text className="text-white mr-2">{savingsMode === "percent" ? "%" : "$"}</Text>
+          <TextInput
+            keyboardType="decimal-pad"
+            value={savingsValue}
+            onChangeText={onSavingsValueChange}
+            placeholder={savingsMode === "percent" ? "20" : "500"}
+            placeholderTextColor="#6b7280"
+            className="flex-1 text-white py-4 text-lg"
+          />
+        </View>
+        {savingsMode === "percent" && (
+          <Text className="text-xs text-gray-500">Percent is capped between 0 and 100.</Text>
+        )}
+      </View>
+
+      <View className="flex-row items-center gap-3">
+        <Pressable
+          onPress={() => {
+            setSavingsMode("fixed");
+            setSavingsValue("0");
+          }}
+          className="px-3 py-2 rounded-full border border-border bg-borderAlt"
+        >
+          <Text className="text-xs text-gray-200">None (0)</Text>
+        </Pressable>
+        <Text className="text-gray-400 text-sm">
+          Estimated savings: <Text className="text-green-500 font-semibold">{formatCurrency(savingsAmount)}</Text>
         </Text>
       </View>
-      <Pressable
-        onPress={() => setStep(4)}
-        className="w-full bg-green-600 p-4 rounded-xl mt-8 items-center"
-      >
-        <Text className="font-bold text-white">Next</Text>
-      </Pressable>
-    </Animated.View>
+    </View>
   );
 
-  const renderStep4 = () => {
-    const inc = parseFloat(monthlyIncome) || 0;
-    const billsTotal = bills.reduce((acc, b) => acc + (b.amount || 0), 0);
-    const saveAmt = getSavingsAmount();
-    const available = inc - billsTotal - saveAmt;
+  const renderReviewStep = () => (
+    <View className="gap-5">
+      <View>
+        <Text className="text-white text-2xl font-bold">Review your setup</Text>
+        <Text className="text-gray-400 mt-1">You can update any of this later.</Text>
+      </View>
 
-    return (
-      <Animated.View
-        entering={FadeInDown.duration(300)}
-        className="flex-1 justify-center"
-      >
-        <Text className="text-2xl font-bold text-white mb-6">Review</Text>
-        <View className="bg-borderAlt rounded-xl p-4 gap-3">
-          <View className="flex-row justify-between">
-            <Text className="text-gray-400">Monthly Income</Text>
-            <Text className="text-green-500 font-bold">+${inc}</Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-gray-400">Period Start</Text>
-            <Text className="text-white font-medium">{startDate}</Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-gray-400">Bills Total</Text>
-            <Text className="text-red-500 font-bold">-${billsTotal}</Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-gray-400">Savings</Text>
-            <Text className="text-red-500 font-bold">
-              -${saveAmt.toFixed(0)}
-            </Text>
-          </View>
-          <View className="flex-row justify-between">
-            <Text className="text-gray-400">Rollover</Text>
-            <Text className="text-white font-medium">
-              {rolloverUnspent ? "On" : "Off"}
-            </Text>
-          </View>
-          <View className="h-px bg-border my-2" />
-          <View className="flex-row justify-between">
-            <Text className="text-white text-lg">Available to Spend</Text>
-            <Text className="text-green-500 font-bold text-lg">
-              ${available.toFixed(0)}
-            </Text>
-          </View>
+      <View className="bg-card border border-border rounded-2xl p-4 gap-3">
+        <View className="flex-row justify-between">
+          <Text className="text-gray-300">Month starts</Text>
+          <Text className="text-white font-medium">{startDate}</Text>
         </View>
-        <Pressable
-          onPress={handleSave}
-          className="w-full bg-green-600 p-4 rounded-xl mt-8 flex-row items-center justify-center gap-2"
-        >
-          <Text className="font-bold text-white">Looks Good</Text>
-          <ArrowRight size={20} color="#ffffff" />
-        </Pressable>
-      </Animated.View>
-    );
+        <View className="flex-row justify-between">
+          <Text className="text-gray-300">Rollover</Text>
+          <Text className="text-white font-medium">{rolloverUnspent ? "On" : "Off"}</Text>
+        </View>
+        <View className="flex-row justify-between">
+          <Text className="text-gray-300">Active bills</Text>
+          <Text className="text-white font-medium">{normalizedBills.length}</Text>
+        </View>
+      </View>
+
+      <View className="bg-green-600/10 border border-green-500/30 rounded-2xl p-4">
+        <Text className="text-green-300 text-xs uppercase tracking-wider">Daily budget</Text>
+        <Text className="text-white text-3xl font-bold mt-1">{formatCurrency(dailyBudget)}</Text>
+      </View>
+    </View>
+  );
+
+  const steps: SetupStep[] = [
+    { key: "income", title: "Income", renderContent: renderIncomeStep, canNext: monthlyIncomeNumber > 0 },
+    { key: "bills", title: "Bills", renderContent: renderBillsStep, canNext: true, optional: true },
+    { key: "savings", title: "Savings", renderContent: renderSavingsStep, canNext: true, optional: true },
+    { key: "review", title: "Review", renderContent: renderReviewStep, canNext: true, ctaLabel: "Start tracking" },
+  ];
+
+  const currentStep = steps[stepIndex];
+  const isLastStep = stepIndex === steps.length - 1;
+
+  const goNext = async () => {
+    if (isLastStep) {
+      await handleSave();
+      return;
+    }
+    setStepIndex((prev) => Math.min(steps.length - 1, prev + 1));
   };
+
+  const goBack = () => {
+    setStepIndex((prev) => Math.max(0, prev - 1));
+  };
+
+  const selectedDateValue = new Date(`${startDate}T00:00:00`);
 
   return (
     <SafeAreaView className="flex-1 bg-background">
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1 p-6"
+        className="flex-1"
       >
-        <View className="flex-1 justify-between">
-          <View className="flex-1">
-            {step === 1 && renderStep1()}
-            {step === 2 && renderStep2()}
-            {step === 3 && renderStep3()}
-            {step === 4 && renderStep4()}
-          </View>
-          {renderAbout()}
+        <View className="flex-1 px-6 pt-4">
+          <SetupHeader
+            currentStep={stepIndex + 1}
+            totalSteps={steps.length}
+            title={currentStep.title}
+            onBack={goBack}
+          />
+
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{ paddingTop: 20, paddingBottom: 28, gap: 20 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Animated.View entering={FadeInDown.duration(220)}>{currentStep.renderContent()}</Animated.View>
+
+            <BudgetPreviewCard
+              monthlyIncome={monthlyIncomeNumber}
+              startDate={startDate}
+              bills={normalizedBills}
+              savingsGoal={normalizedSavingsGoal}
+            />
+
+            {renderAbout()}
+          </ScrollView>
         </View>
+
+        <View className="px-6 pb-6 pt-4 border-t border-border bg-background gap-3">
+          {currentStep.optional && !isLastStep && (
+            <Pressable onPress={() => setStepIndex((prev) => Math.min(steps.length - 1, prev + 1))}>
+              <Text className="text-center text-gray-400">Skip for now</Text>
+            </Pressable>
+          )}
+
+          <Pressable
+            onPress={goNext}
+            disabled={!currentStep.canNext}
+            className={`w-full p-4 rounded-xl flex-row items-center justify-center gap-2 ${
+              currentStep.canNext ? "bg-green-600" : "bg-green-800/40"
+            }`}
+          >
+            <Text className="font-bold text-white">{currentStep.ctaLabel ?? (isLastStep ? "Finish" : "Next")}</Text>
+            <ArrowRight size={18} color="#ffffff" />
+          </Pressable>
+        </View>
+
+        {showDatePicker &&
+          (Platform.OS === "ios" ? (
+            <Modal
+              transparent
+              animationType="fade"
+              visible={showDatePicker}
+              onRequestClose={() => setShowDatePicker(false)}
+            >
+              <Pressable
+                className="flex-1 bg-black/60 justify-end"
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Pressable className="bg-[#1c1c1e] p-4 rounded-t-2xl" onPress={() => {}}>
+                  <View className="flex-row justify-between items-center mb-2">
+                    <Text className="text-white text-base font-semibold">Select start date</Text>
+                    <Pressable onPress={() => setShowDatePicker(false)}>
+                      <Text className="text-blue-400">Done</Text>
+                    </Pressable>
+                  </View>
+                  <DateTimePicker
+                    value={selectedDateValue}
+                    mode="date"
+                    display="inline"
+                    onChange={handleDateChange}
+                  />
+                </Pressable>
+              </Pressable>
+            </Modal>
+          ) : (
+            <DateTimePicker
+              value={selectedDateValue}
+              mode="date"
+              display="calendar"
+              onChange={handleDateChange}
+            />
+          ))}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

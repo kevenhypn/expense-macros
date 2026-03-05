@@ -38,6 +38,7 @@ import { SummaryCard } from "../components/SummaryCard";
 import { AmountToggle } from "../components/AmountToggle";
 import { CategoryGrid } from "../components/CategoryGrid";
 import { CATEGORY_STYLES, CATEGORY_TEXT_COLORS } from "../lib/categoryStyles";
+import { formatMoney0 } from "../src/utils/money";
 
 type FilterType = "All" | "Spending" | "Bills" | "Savings" | "Income";
 
@@ -174,7 +175,8 @@ export default function Dashboard() {
 
   const availableToSpend = baseAvailableToSpend + incomeAdjustments;
   const periodLeft = availableToSpend + netDiscretionary;
-  const daysPassed = selectedDate.getDate();
+  const monthLeft = periodLeft;
+  const monthBudgetTotal = availableToSpend;
   const pctOfIncome = (amount: number) =>
     totalIncome > 0 ? (amount / totalIncome) * 100 : 0;
 
@@ -230,6 +232,18 @@ export default function Dashboard() {
   }, 0);
 
   const todayLeft = dailyBudget - todaySpent;
+  const safeToSpendToday = dailyBudget;
+  const remainingToday = todayLeft;
+  const daysLeftInMonth = dim - selectedDay + 1;
+  const nextResetDate = new Date(
+    selectedDate.getFullYear(),
+    selectedDate.getMonth() + 1,
+    1
+  );
+  const nextResetLabel = `Resets ${nextResetDate.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })}`;
 
   const buildSpendingTotals = (txs: Transaction[]) => {
     const netTotals: Record<SpendingCategory, number> = {
@@ -509,22 +523,62 @@ export default function Dashboard() {
               {/* Summary Cards */}
               <Animated.View
                 entering={FadeInDown.duration(300).delay(100)}
-                className="px-6 flex-col-reverse gap-4 mb-6"
+                className="px-6 flex-col gap-4 mb-6"
               >
-                <View className="opacity-50">
+                <View>
                   <Pressable
-                    onPress={() => {
-                      setExpandedCard(null);
-                      setViewMode("period");
-                    }}
+                    onPress={() =>
+                      setExpandedCard(expandedCard === "period" ? null : "period")
+                    }
                   >
                     <SummaryCard
-                      title="Period Budget"
-                      mainValue={`$${periodLeft.toFixed(0)}`}
-                      mainIsPositive={periodLeft >= 0}
-                      subValue={`$${availableToSpend.toFixed(0)} total`}
-                      footerText={`Tap for period breakdown • Day ${daysPassed}`}
-                    />
+                      title="Left this month"
+                      mainValue={formatMoney0(monthLeft)}
+                      mainIsPositive={monthLeft >= 0}
+                      subValue={`${formatMoney0(monthBudgetTotal)} budget  ${daysLeftInMonth} days left`}
+                      footerText={`${nextResetLabel}  Tap for month breakdown`}
+                    >
+                      {expandedCard === "period" && (
+                        <View className="gap-3">
+                          <View className="flex-row justify-between">
+                            <Text className="text-xs text-gray-500">
+                              Left this month
+                            </Text>
+                            <Text
+                              className={`text-sm font-semibold ${
+                                monthLeft >= 0 ? "text-green-500" : "text-red-500"
+                              }`}
+                            >
+                              {formatMoney0(monthLeft)}
+                            </Text>
+                          </View>
+                          <View className="flex-row justify-between">
+                            <Text className="text-xs text-gray-500">
+                              Spent so far
+                            </Text>
+                            <Text className="text-sm font-semibold text-white">
+                              {formatMoney0(discretionarySpent)}
+                            </Text>
+                          </View>
+                          <View className="flex-row justify-between">
+                            <Text className="text-xs text-gray-500">
+                              Overspent days
+                            </Text>
+                            <Text className="text-sm font-semibold text-white">
+                              {overspentDays}
+                            </Text>
+                          </View>
+                          <View className="flex-row justify-between">
+                            <Text className="text-xs text-gray-500">
+                              Budget mode
+                            </Text>
+                            <Text className="text-sm font-semibold text-white">
+                              {rolloverUnspent ? "rollover" : "fixed"}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
+                    </SummaryCard>
                   </Pressable>
                 </View>
                 <View>
@@ -534,25 +588,28 @@ export default function Dashboard() {
                     }
                   >
                     <SummaryCard
-                      title="Today's Budget"
-                      mainValue={`$${todayLeft.toFixed(0)}`}
-                      mainIsPositive={todayLeft >= 0}
-                      subValue={`$${dailyBudget.toFixed(0)} ${
-                        rolloverUnspent ? "rolling" : "fixed"
+                      title="Safe to spend today"
+                      mainValue={formatMoney0(remainingToday)}
+                      mainIsPositive={remainingToday >= 0}
+                      subValue={`${formatMoney0(safeToSpendToday)} safe today  ${
+                        rolloverUnspent ? "rollover" : "fixed"
                       }`}
-                      footerText="Daily limit"
+                      footerText="Updates as you spend"
                     >
                       {expandedCard === "today" && (
                         <View className="gap-3">
+                          <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                            Todays guide
+                          </Text>
                           <View className="flex-row gap-2">
                             <View className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
                               <Text className="text-xs text-gray-300">
-                                Net today: ${todayNet.toFixed(0)}
+                                Net today: {formatMoney0(todayNet)}
                               </Text>
                             </View>
                             <View className="px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20">
                               <Text className="text-xs text-emerald-200">
-                                Reimbursed: ${todayReimbursed.toFixed(0)}
+                                Reimbursed: {formatMoney0(todayReimbursed)}
                               </Text>
                             </View>
                           </View>
@@ -803,7 +860,7 @@ export default function Dashboard() {
             >
               <View className="bg-card border border-border rounded-3xl p-5 gap-3">
                 <Text className="text-gray-400 text-sm uppercase tracking-wider font-semibold">
-                  Period breakdown
+                  Month breakdown
                 </Text>
                 <View className="flex-row justify-between">
                   <View>
@@ -813,7 +870,7 @@ export default function Dashboard() {
                         periodLeft >= 0 ? "text-green-500" : "text-red-500"
                       }`}
                     >
-                      ${periodLeft.toFixed(0)}
+                      {formatMoney0(periodLeft)}
                     </Text>
                   </View>
                   <View className="items-end">
@@ -829,7 +886,7 @@ export default function Dashboard() {
                   <View>
                     <Text className="text-xs text-gray-500">Spent</Text>
                     <Text className="text-lg font-semibold text-white">
-                      ${discretionarySpent.toFixed(0)}
+                      {formatMoney0(discretionarySpent)}
                     </Text>
                   </View>
                   <View>
@@ -847,7 +904,7 @@ export default function Dashboard() {
                 </Text>
                 {fullExpenses.totalSpent === 0 ? (
                   <Text className="text-xs text-gray-500">
-                    No expenses yet for this period.
+                    No expenses yet for this month.
                   </Text>
                 ) : (
                   <View className="gap-4">
@@ -885,7 +942,7 @@ export default function Dashboard() {
                 </Text>
                 {periodSpending.totalSpent === 0 ? (
                   <Text className="text-xs text-gray-500">
-                    No spending yet for this period.
+                    No spending yet for this month.
                   </Text>
                 ) : (
                   <View className="gap-4">
@@ -922,7 +979,7 @@ export default function Dashboard() {
 
               <View className="bg-cardAlt rounded-3xl p-5 gap-3">
                 <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                  Period log
+                  Month log
                 </Text>
                 {periodLogTxs.map((tx) => (
                   <View
@@ -1008,7 +1065,7 @@ export default function Dashboard() {
                   viewMode === "period" ? "text-white" : "text-gray-500"
                 }`}
               >
-                Period Breakdown
+                Month Breakdown
               </Text>
             </Pressable>
           </View>
@@ -1221,3 +1278,4 @@ export default function Dashboard() {
     </SafeAreaView>
   );
 }
+
