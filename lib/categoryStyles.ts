@@ -13,12 +13,12 @@ type CategoryStyle = {
 // Using explicit background colors that work with NativeWind
 export const CATEGORY_STYLES: Record<TransactionCategory, CategoryStyle> = {
   Food: {
-    selected: "bg-[#8B5A2B]",
-    unselected: "bg-[#2d1e10]",
-    badge: "bg-[#2d1e10]",
-    selectedBg: "#8B5A2B",
-    unselectedBg: "#2d1e10",
-    badgeBg: "#2d1e10",
+    selected: "bg-orange-500",
+    unselected: "bg-[#3a1f0b]",
+    badge: "bg-[#3a1f0b]",
+    selectedBg: "#f97316",
+    unselectedBg: "#3a1f0b",
+    badgeBg: "#3a1f0b",
   },
   Bills: {
     selected: "bg-red-600",
@@ -86,7 +86,7 @@ export const CATEGORY_TEXT_COLORS: Record<
   Food: {
     selected: "text-white",
     unselected: "text-black",
-    badge: "text-[#cda57a]",
+    badge: "text-[#fdba74]",
   },
   Bills: {
     selected: "text-white",

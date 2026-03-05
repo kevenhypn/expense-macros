@@ -34,7 +34,7 @@ import {
   isSameMonth,
 } from "../lib/storage";
 import { useAppData } from "../hooks/useAppData";
-import { SummaryCard } from "../components/SummaryCard";
+import { BudgetFrame } from "../components/dashboard/BudgetFrame";
 import { AmountToggle } from "../components/AmountToggle";
 import { CategoryGrid } from "../components/CategoryGrid";
 import { CATEGORY_STYLES, CATEGORY_TEXT_COLORS } from "../lib/categoryStyles";
@@ -54,14 +54,12 @@ export default function Dashboard() {
   const [note, setNote] = useState("");
   const [filter] = useState<FilterType>("All");
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedCard, setExpandedCard] = useState<"period" | "today" | null>(
-    null
-  );
   const [showAllMonthFlows, setShowAllMonthFlows] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "period">("day");
   const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showMonthBreakdown, setShowMonthBreakdown] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState("");
   const [editAmount, setEditAmount] = useState("");
@@ -228,14 +226,8 @@ export default function Dashboard() {
   }
 
   const todayTxs = selectedDayTxs;
-  const todayNet = todayTxs.reduce((sum, t) => {
+  const todaySpent = -todayTxs.reduce((sum, t) => {
     if (!isSpendingCategory(t.category)) return sum;
-    return sum + t.amount;
-  }, 0);
-  const todaySpent = -todayNet;
-  const todayReimbursed = todayTxs.reduce((sum, t) => {
-    if (!isSpendingCategory(t.category)) return sum;
-    if (t.amount <= 0) return sum;
     return sum + t.amount;
   }, 0);
 
@@ -302,12 +294,17 @@ export default function Dashboard() {
   };
 
   const periodSpending = buildSpendingTotals(currentMonthTxs);
-  const todaySpending = buildSpendingTotals(todayTxs);
   const fullExpenses = buildExpenseTotals(currentMonthTxs);
   const shouldHideFullFlows = spareMoneyMode && !showAllMonthFlows;
   const monthExpenseCategories = shouldHideFullFlows
     ? (expenseCategories.filter((cat) => cat !== "Bills") as ExpenseCategory[])
     : expenseCategories;
+  const sortedMonthExpenseCategories = [...monthExpenseCategories].sort(
+    (a, b) => fullExpenses.totals[b] - fullExpenses.totals[a]
+  );
+  const sortedSpendingCategories = [...spendingCategories].sort(
+    (a, b) => periodSpending.totals[b] - periodSpending.totals[a]
+  );
 
   const periodLogTxs = [...currentMonthTxs].sort(
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
@@ -324,9 +321,6 @@ export default function Dashboard() {
           !(tx.isSystem && tx.category === "Bills") && tx.category !== "Income"
       )
     : selectedDayTxs;
-  const todaySpendingTxs = todayTxs.filter((t) =>
-    spendingCategories.includes(t.category as SpendingCategory)
-  );
 
   // --- Handlers ---
 
@@ -544,227 +538,68 @@ export default function Dashboard() {
 
           {viewMode === "day" ? (
             <>
-              {/* Summary Cards */}
               <Animated.View
                 entering={FadeInDown.duration(300).delay(100)}
                 className="px-6 flex-col gap-4 mb-6"
               >
-                <View>
-                  <Pressable
-                    onPress={() =>
-                      setExpandedCard(expandedCard === "period" ? null : "period")
-                    }
-                  >
-                    <SummaryCard
-                      title="Left this month"
-                      mainValue={formatMoney0(monthLeft)}
-                      mainIsPositive={monthLeft >= 0}
-                      subValue={`${formatMoney0(monthBudgetTotal)} budget  ${daysLeftInMonth} days left`}
-                      footerText={`${nextResetLabel}  Tap for month breakdown`}
-                    >
-                      {expandedCard === "period" && (
-                        <View className="gap-3">
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Left this month
-                            </Text>
-                            <Text
-                              className={`text-sm font-semibold ${
-                                monthLeft >= 0 ? "text-green-500" : "text-red-500"
-                              }`}
-                            >
-                              {formatMoney0(monthLeft)}
-                            </Text>
-                          </View>
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Spent so far
-                            </Text>
-                            <Text className="text-sm font-semibold text-white">
-                              {formatMoney0(discretionarySpent)}
-                            </Text>
-                          </View>
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Overspent days
-                            </Text>
-                            <Text className="text-sm font-semibold text-white">
-                              {overspentDays}
-                            </Text>
-                          </View>
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Budget mode
-                            </Text>
-                            <Text className="text-sm font-semibold text-white">
-                              {rolloverUnspent ? "rollover" : "fixed"}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-                    </SummaryCard>
-                  </Pressable>
-                </View>
-                <View>
-                  <Pressable
-                    onPress={() =>
-                      setExpandedCard(expandedCard === "today" ? null : "today")
-                    }
-                  >
-                    <SummaryCard
-                      title="Safe to spend today"
-                      mainValue={formatMoney0(remainingToday)}
-                      mainIsPositive={remainingToday >= 0}
-                      subValue={`${formatMoney0(safeToSpendToday)} safe today  ${
-                        rolloverUnspent ? "rollover" : "fixed"
-                      }`}
-                      footerText="Updates as you spend"
-                    >
-                      {expandedCard === "today" && (
-                        <View className="gap-3">
-                          <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                            Today's guide
-                          </Text>
-                          <View className="flex-row flex-wrap gap-2">
-                            <View className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                              <Text className="text-xs text-gray-300">
-                                Net today: {formatMoney0(todayNet)}
-                              </Text>
-                            </View>
-                            <View className="px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20">
-                              <Text className="text-xs text-emerald-200">
-                                Reimbursed: {formatMoney0(todayReimbursed)}
-                              </Text>
-                            </View>
-                          </View>
-                          <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">
-                            Today's spending
-                          </Text>
-                          {todaySpending.totalSpent === 0 ? (
-                            <Text className="text-xs text-gray-500 mb-2">
-                              No spending yet today.
-                            </Text>
-                          ) : (
-                            <View className="gap-4 mb-2">
-                              {spendingCategories.map((cat) => {
-                                const spent = todaySpending.totals[cat];
-                                if (spent <= 0) return null;
-                                const pctSpent = todaySpending.totalSpent
-                                  ? (spent / todaySpending.totalSpent) * 100
-                                  : 0;
-                                const pctIncome = config.monthlyIncome
-                                  ? (spent / config.monthlyIncome) * 100
-                                  : 0;
-                                return (
-                                  <View key={cat} className="gap-2">
-                                    <View className="flex-row justify-between">
-                                      <Text className="text-sm text-white">
-                                        {cat}
-                                      </Text>
-                                      <Text className="text-xs text-gray-500">
-                                        {pctSpent.toFixed(0)}% spent -{" "}
-                                        {pctIncome.toFixed(0)}% income
-                                      </Text>
-                                    </View>
-                                    <View className="gap-2">
-                                      <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                        <View
-                                          style={{
-                                            width: `${Math.min(
-                                              100,
-                                              pctSpent
-                                            )}%`,
-                                            backgroundColor:
-                                              CATEGORY_STYLES[cat].selectedBg,
-                                          }}
-                                          className="h-2"
-                                        />
-                                      </View>
-                                      <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                        <View
-                                          style={{
-                                            width: `${Math.min(
-                                              100,
-                                              pctIncome
-                                            )}%`,
-                                            backgroundColor:
-                                              CATEGORY_STYLES[cat].unselectedBg,
-                                          }}
-                                          className="h-2"
-                                        />
-                                      </View>
-                                    </View>
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          )}
-                          <View className="gap-3">
-                            {todaySpendingTxs.map((tx) => (
-                              <View
-                                key={tx.id}
-                                className={`rounded-2xl border border-border bg-[#151515] px-3 py-3 flex-row justify-between items-center gap-3 ${
-                                  tx.isSystem ? "opacity-50" : "opacity-100"
-                                }`}
-                              >
-                                <View className="flex-row gap-3 items-center flex-1">
-                                  <View
-                                    style={{
-                                      width: 32,
-                                      height: 32,
-                                      borderRadius: 16,
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      backgroundColor:
-                                        CATEGORY_STYLES[tx.category].badgeBg,
-                                    }}
-                                  >
-                                    <Text
-                                      className={`text-[10px] font-bold ${
-                                        CATEGORY_TEXT_COLORS[tx.category].badge
-                                      }`}
-                                    >
-                                      {tx.category[0]}
-                                    </Text>
-                                  </View>
-                                  <View className="flex-1">
-                                    {tx.note ? (
-                                      <>
-                                        <Text className="font-medium text-white">
-                                          {tx.note}
-                                        </Text>
-                                        <Text className="text-xs text-gray-500">
-                                          {tx.date}
-                                        </Text>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Text className="font-medium text-white">
-                                          {tx.category}
-                                        </Text>
-                                        <Text className="text-xs text-gray-500">
-                                          {tx.date}
-                                        </Text>
-                                      </>
-                                    )}
-                                  </View>
-                                </View>
-                                <Text className="text-base font-semibold text-white">
-                                  {formatMoney2(tx.amount)}
-                                </Text>
-                              </View>
-                            ))}
-                            {todaySpendingTxs.length === 0 && (
-                              <Text className="text-center text-gray-600 mt-2">
-                                No transactions found
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                      )}
-                    </SummaryCard>
-                  </Pressable>
-                </View>
+                <Pressable
+                  onPress={() => setShowMonthBreakdown((prev) => !prev)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Left this month: ${formatMoney0(
+                    monthLeft
+                  )}. Spent ${formatMoney0(
+                    discretionarySpent
+                  )} of ${formatMoney0(
+                    monthBudgetTotal
+                  )}. Safe today ${formatMoney0(safeToSpendToday)}.`}
+                >
+                  <View className="items-center">
+                    <BudgetFrame
+                      budgetTotal={monthBudgetTotal}
+                      monthLeft={monthLeft}
+                      discretionarySpent={discretionarySpent}
+                      daysLeftInMonth={daysLeftInMonth}
+                      resetLabel={nextResetLabel}
+                      safeToSpendToday={safeToSpendToday}
+                      remainingToday={remainingToday}
+                    />
+                    <Text className="text-[11px] text-gray-500 mt-3">
+                      Tap frame for month breakdown
+                    </Text>
+                  </View>
+                </Pressable>
+
+                {showMonthBreakdown ? (
+                  <View className="bg-card border border-border rounded-3xl p-5 gap-3">
+                    <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                      Month breakdown
+                    </Text>
+                    <View className="flex-row justify-between">
+                      <Text className="text-xs text-gray-500">
+                        Spent so far
+                      </Text>
+                      <Text className="text-sm font-semibold text-white">
+                        {formatMoney0(discretionarySpent)}
+                      </Text>
+                    </View>
+                    <View className="flex-row justify-between">
+                      <Text className="text-xs text-gray-500">
+                        Overspent days
+                      </Text>
+                      <Text className="text-sm font-semibold text-white">
+                        {overspentDays}
+                      </Text>
+                    </View>
+                    <View className="flex-row justify-between">
+                      <Text className="text-xs text-gray-500">Budget mode</Text>
+                      <Text className="text-sm font-semibold text-white">
+                        {rolloverUnspent ? "rollover" : "fixed"}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+
+
               </Animated.View>
 
               {/* Add Transaction Form */}
@@ -814,52 +649,41 @@ export default function Dashboard() {
                   {filteredList.map((tx) => (
                     <View
                       key={tx.id}
-                      className={`rounded-2xl border border-border bg-[#151515] px-3 py-3 ${
+                      className={`rounded-2xl border border-border bg-[#151515] flex-row items-center gap-3 overflow-hidden ${
                         tx.isSystem ? "opacity-60" : "opacity-100"
                       }`}
                     >
-                      <View className="flex-row justify-between items-center gap-3">
-                        <View className="flex-row gap-3 items-center flex-1">
-                          <View
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 20,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor:
-                                CATEGORY_STYLES[tx.category].badgeBg,
-                            }}
-                          >
-                            <Text
-                              className={`text-xs font-bold ${
-                                CATEGORY_TEXT_COLORS[tx.category].badge
-                              }`}
-                            >
-                              {tx.category[0]}
-                            </Text>
-                          </View>
-                          <View className="flex-1">
-                            {tx.note ? (
-                              <>
-                                <Text className="font-medium text-white">
-                                  {tx.note}
-                                </Text>
-                                <Text className="text-xs text-gray-500">
-                                  {tx.date} {tx.isSystem && "(Auto)"}
-                                </Text>
-                              </>
-                            ) : (
-                              <>
-                                <Text className="font-medium text-white">
-                                  {tx.category}
-                                </Text>
-                                <Text className="text-xs text-gray-500">
-                                  {tx.date} {tx.isSystem && "(Auto)"}
-                                </Text>
-                              </>
-                            )}
-                          </View>
+                      <View
+                        style={{
+                          width: 6,
+                          alignSelf: "stretch",
+                          backgroundColor:
+                            CATEGORY_STYLES[tx.category].selectedBg,
+                        }}
+                      />
+                      <View className="flex-1 flex-row items-center justify-between gap-3 px-2 py-3">
+                        <View className="flex-1">
+                          {tx.note ? (
+                            <>
+                              <Text className="font-medium text-white">
+                                {tx.note}
+                              </Text>
+                              <Text className="text-xs text-gray-500">
+                                {tx.category} • {tx.date}{" "}
+                                {tx.isSystem && "(Auto)"}
+                              </Text>
+                            </>
+                          ) : (
+                            <>
+                              <Text className="font-medium text-white">
+                                {tx.category}
+                              </Text>
+                              <Text className="text-xs text-gray-500">
+                                {tx.category} • {tx.date}{" "}
+                                {tx.isSystem && "(Auto)"}
+                              </Text>
+                            </>
+                          )}
                         </View>
                         <View className="flex-row items-center gap-2">
                           <Text
@@ -966,9 +790,9 @@ export default function Dashboard() {
                     </Text>
                   ) : (
                     <View className="gap-4">
-                      {monthExpenseCategories.map((cat) => {
-                        const spent = fullExpenses.totals[cat];
-                        if (spent <= 0) return null;
+                    {sortedMonthExpenseCategories.map((cat) => {
+                      const spent = fullExpenses.totals[cat];
+                      if (spent <= 0) return null;
                         const pct = pctOfIncome(spent);
                         return (
                           <View key={cat} className="gap-2">
@@ -999,7 +823,7 @@ export default function Dashboard() {
                   </Text>
                 ) : (
                   <View className="gap-4">
-                    {spendingCategories.map((cat) => {
+                    {sortedSpendingCategories.map((cat) => {
                       const spent = periodSpending.totals[cat];
                       if (spent <= 0) return null;
                       const pctSpent = periodSpending.totalSpent
@@ -1037,29 +861,18 @@ export default function Dashboard() {
                 {visiblePeriodLogTxs.map((tx) => (
                   <View
                     key={tx.id}
-                    className={`rounded-2xl border border-border bg-[#151515] px-3 py-3 flex-row justify-between items-center gap-3 ${
+                    className={`rounded-2xl border border-border bg-[#151515] flex-row items-center gap-3 overflow-hidden ${
                       tx.isSystem ? "opacity-50" : "opacity-100"
                     }`}
                   >
-                    <View className="flex-row gap-3 items-center flex-1">
-                      <View
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: CATEGORY_STYLES[tx.category].badgeBg,
-                        }}
-                      >
-                        <Text
-                          className={`text-[10px] font-bold ${
-                            CATEGORY_TEXT_COLORS[tx.category].badge
-                          }`}
-                        >
-                          {tx.category[0]}
-                        </Text>
-                      </View>
+                    <View
+                      style={{
+                        width: 6,
+                        alignSelf: "stretch",
+                        backgroundColor: CATEGORY_STYLES[tx.category].selectedBg,
+                      }}
+                    />
+                    <View className="flex-1 flex-row items-center justify-between gap-3 px-2 py-3">
                       <View className="flex-1">
                         {tx.note ? (
                           <>
@@ -1067,7 +880,8 @@ export default function Dashboard() {
                               {tx.note}
                             </Text>
                             <Text className="text-xs text-gray-500">
-                              {tx.date} {tx.isSystem && "(Auto)"}
+                              {tx.category} • {tx.date}{" "}
+                              {tx.isSystem && "(Auto)"}
                             </Text>
                           </>
                         ) : (
@@ -1076,19 +890,20 @@ export default function Dashboard() {
                               {tx.category}
                             </Text>
                             <Text className="text-xs text-gray-500">
-                              {tx.date} {tx.isSystem && "(Auto)"}
+                              {tx.category} • {tx.date}{" "}
+                              {tx.isSystem && "(Auto)"}
                             </Text>
                           </>
                         )}
                       </View>
+                      <Text
+                        className={`text-base font-semibold ${
+                          tx.amount > 0 ? "text-green-500" : "text-white"
+                        }`}
+                      >
+                        {formatMoney2(tx.amount)}
+                      </Text>
                     </View>
-                    <Text
-                      className={`text-base font-semibold ${
-                        tx.amount > 0 ? "text-green-500" : "text-white"
-                      }`}
-                    >
-                      {formatMoney2(tx.amount)}
-                    </Text>
                   </View>
                 ))}
                 {visiblePeriodLogTxs.length === 0 && (
