@@ -816,8 +816,10 @@ export default function Dashboard() {
                       ${periodLeft.toFixed(0)}
                     </Text>
                   </View>
-                  <View>
-                    <Text className="text-xs text-gray-500">Overspent days</Text>
+                  <View className="items-end">
+                    <Text className="text-xs text-gray-500">
+                      Overspent days
+                    </Text>
                     <Text className="text-2xl font-bold text-white">
                       {overspentDays}
                     </Text>
@@ -1018,55 +1020,78 @@ export default function Dashboard() {
           visible={!!editingId}
           onRequestClose={handleCancelEdit}
         >
-          <View className="flex-1 bg-black/60 justify-center px-6">
-            <View className="bg-background border border-border rounded-3xl p-5 gap-4">
-              <Text className="text-xs text-gray-400 uppercase tracking-wider">
-                Edit transaction
-              </Text>
-              <View className="flex-row gap-3">
-                <TextInput
-                  value={editDate}
-                  onChangeText={setEditDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#6b7280"
-                  className="flex-1 bg-borderAlt p-3 rounded-xl text-white border border-border"
-                />
-                <TextInput
-                  keyboardType="decimal-pad"
-                  value={editAmount}
-                  onChangeText={setEditAmount}
-                  placeholder="$"
-                  placeholderTextColor="#6b7280"
-                  className="w-28 bg-borderAlt p-3 rounded-xl text-white border border-border"
-                />
-              </View>
-              <CategoryGrid
-                selected={editCategory}
-                onSelect={setEditCategory}
-              />
-              <TextInput
-                placeholder="Note (optional)"
-                placeholderTextColor="#6b7280"
-                value={editNote}
-                onChangeText={setEditNote}
-                className="w-full border-b border-border pb-2 text-gray-400"
-              />
-              <View className="flex-row gap-2">
-                <Pressable
-                  onPress={handleSaveEdit}
-                  className="flex-1 bg-green-600 p-3 rounded-xl items-center"
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <Pressable
+              className="flex-1 bg-black/60 justify-end px-6 pb-8"
+              onPress={handleCancelEdit}
+            >
+              <Pressable
+                className="bg-background border border-border rounded-3xl p-5 gap-4"
+                onPress={() => {}}
+              >
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-xs text-gray-400 uppercase tracking-wider">
+                    Edit transaction
+                  </Text>
+                  <Pressable onPress={handleCancelEdit}>
+                    <Text className="text-xs text-gray-400">Close</Text>
+                  </Pressable>
+                </View>
+                <ScrollView
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ gap: 16, paddingBottom: 8 }}
                 >
-                  <Text className="text-white font-semibold">Save</Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleCancelEdit}
-                  className="flex-1 bg-[#2a2a2a] p-3 rounded-xl items-center"
-                >
-                  <Text className="text-gray-300 font-semibold">Cancel</Text>
-                </Pressable>
-              </View>
-            </View>
-          </View>
+                  <View className="flex-row gap-3">
+                    <TextInput
+                      value={editDate}
+                      onChangeText={setEditDate}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor="#6b7280"
+                      className="flex-1 bg-borderAlt p-3 rounded-xl text-white border border-border"
+                    />
+                    <TextInput
+                      keyboardType="decimal-pad"
+                      value={editAmount}
+                      onChangeText={setEditAmount}
+                      placeholder="$"
+                      placeholderTextColor="#6b7280"
+                      className="w-28 bg-borderAlt p-3 rounded-xl text-white border border-border"
+                    />
+                  </View>
+                  <CategoryGrid
+                    selected={editCategory}
+                    onSelect={setEditCategory}
+                  />
+                  <TextInput
+                    placeholder="Note (optional)"
+                    placeholderTextColor="#6b7280"
+                    value={editNote}
+                    onChangeText={setEditNote}
+                    className="w-full border-b border-border pb-2 text-gray-400"
+                  />
+                  <View className="flex-row gap-2">
+                    <Pressable
+                      onPress={handleSaveEdit}
+                      className="flex-1 bg-green-600 p-3 rounded-xl items-center"
+                    >
+                      <Text className="text-white font-semibold">Save</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleCancelEdit}
+                      className="flex-1 bg-[#2a2a2a] p-3 rounded-xl items-center"
+                    >
+                      <Text className="text-gray-300 font-semibold">
+                        Cancel
+                      </Text>
+                    </Pressable>
+                  </View>
+                </ScrollView>
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Modal>
 
         <Modal

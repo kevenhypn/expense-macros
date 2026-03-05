@@ -7,6 +7,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -19,6 +21,7 @@ import {
   regenerateSystemTransactions,
   generateId,
 } from "../../lib/storage";
+import { PRIVACY_POLICY_URL, SUPPORT_URL } from "../../src/constants/urls";
 
 export default function SetupWizard() {
   const router = useRouter();
@@ -43,6 +46,33 @@ export default function SetupWizard() {
   const updateBill = (id: string, field: keyof Bill, val: string | number) => {
     setBills(bills.map((b) => (b.id === id ? { ...b, [field]: val } : b)));
   };
+
+  const openExternal = async (url: string) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        Alert.alert("Unable to open link", "Please try again later.");
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert("Unable to open link", "Please try again later.");
+    }
+  };
+
+  const renderAbout = () => (
+    <View className="pt-4 border-t border-border">
+      <Text className="text-xs text-gray-500 uppercase tracking-wider">About</Text>
+      <View className="flex-row gap-4 mt-2">
+        <Pressable onPress={() => openExternal(PRIVACY_POLICY_URL)}>
+          <Text className="text-sm text-blue-400">Privacy Policy</Text>
+        </Pressable>
+        <Pressable onPress={() => openExternal(SUPPORT_URL)}>
+          <Text className="text-sm text-blue-400">Support</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 
   const getSavingsAmount = () => {
     const inc = parseFloat(monthlyIncome) || 0;
@@ -307,10 +337,15 @@ export default function SetupWizard() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1 p-6"
       >
-        {step === 1 && renderStep1()}
-        {step === 2 && renderStep2()}
-        {step === 3 && renderStep3()}
-        {step === 4 && renderStep4()}
+        <View className="flex-1 justify-between">
+          <View className="flex-1">
+            {step === 1 && renderStep1()}
+            {step === 2 && renderStep2()}
+            {step === 3 && renderStep3()}
+            {step === 4 && renderStep4()}
+          </View>
+          {renderAbout()}
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

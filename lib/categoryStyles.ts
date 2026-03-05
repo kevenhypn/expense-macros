@@ -104,7 +104,7 @@ export const CATEGORY_TEXT_COLORS: Record<
     badge: "text-purple-400",
   },
   Transport: {
-    selected: "text-black",
+    selected: "text-white",
     unselected: "text-black",
     badge: "text-yellow-300",
   },
