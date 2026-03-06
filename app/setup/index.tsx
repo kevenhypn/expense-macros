@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   TextInput,
@@ -23,6 +24,7 @@ import { Bill, BudgetConfig, SavingsGoal } from "../../types";
 import {
   getTodayISO,
   saveConfig,
+  loadConfig,
   regenerateSystemTransactions,
   generateId,
   daysInMonth,
@@ -164,6 +166,8 @@ export default function SetupWizard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [stepIndex, setStepIndex] = useState(0);
+  const [isHydrating, setIsHydrating] = useState(true);
+  const [hasExistingConfig, setHasExistingConfig] = useState(false);
 
   const [monthlyIncome, setMonthlyIncome] = useState<string>("");
   const [startDate, setStartDate] = useState(getTodayISO());
@@ -220,6 +224,51 @@ export default function SetupWizard() {
       ? previewFinancials.availableToSpend / monthlyIncomeNumber
       : 1
   );
+
+  useEffect(() => {
+    let isActive = true;
+
+    const hydrateFromConfig = async () => {
+      const existingConfig = await loadConfig();
+      if (!isActive) return;
+
+      if (existingConfig) {
+        setHasExistingConfig(true);
+        setMonthlyIncome(
+          existingConfig.monthlyIncome > 0
+            ? String(existingConfig.monthlyIncome)
+            : ""
+        );
+        setStartDate(existingConfig.startDate);
+        setBills(existingConfig.bills);
+        setSavingsMode(existingConfig.savingsGoal.mode);
+        setSavingsValue(
+          existingConfig.savingsGoal.mode === "percent"
+            ? String(existingConfig.savingsGoal.percent)
+            : String(existingConfig.savingsGoal.amount)
+        );
+        setRolloverUnspent(existingConfig.rolloverUnspent ?? true);
+        setSpareMoneyMode(existingConfig.spareMoneyMode ?? true);
+        setErrors({});
+      }
+
+      setIsHydrating(false);
+    };
+
+    hydrateFromConfig();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  if (isHydrating) {
+    return (
+      <SafeAreaView className="flex-1 bg-background items-center justify-center">
+        <ActivityIndicator size="large" color="#ffffff" />
+      </SafeAreaView>
+    );
+  }
 
   const addBill = (name = "") => {
     setBills((prev) => [...prev, { id: generateId(), name, amount: 0 }]);
@@ -719,7 +768,7 @@ export default function SetupWizard() {
       title: "Review",
       renderContent: renderReviewStep,
       canNext: true,
-      ctaLabel: "Start tracking",
+      ctaLabel: hasExistingConfig ? "Save changes" : "Start tracking",
     },
   ];
 
@@ -735,6 +784,10 @@ export default function SetupWizard() {
   };
 
   const goBack = () => {
+    if (stepIndex === 0 && hasExistingConfig) {
+      router.replace("/");
+      return;
+    }
     setStepIndex((prev) => Math.max(0, prev - 1));
   };
 
@@ -762,6 +815,7 @@ export default function SetupWizard() {
             totalSteps={steps.length}
             title={currentStep.title}
             onBack={goBack}
+            allowBackOnFirstStep={hasExistingConfig}
             accentGlowColor={previewTheme.accentGlowStrong}
             activeStepColor={previewTheme.accent}
           />

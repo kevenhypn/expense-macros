@@ -9,6 +9,7 @@ type SetupHeaderProps = {
   totalSteps: number;
   title: string;
   onBack: () => void;
+  allowBackOnFirstStep?: boolean;
   accentGlowColor?: string;
   activeStepColor?: string;
 };
@@ -18,10 +19,12 @@ export function SetupHeader({
   totalSteps,
   title,
   onBack,
+  allowBackOnFirstStep = false,
   accentGlowColor = DEFAULT_BUDGET_THEME.accentGlowStrong,
   activeStepColor = DEFAULT_BUDGET_THEME.accent,
 }: SetupHeaderProps) {
   const isFirstStep = currentStep <= 1;
+  const disableBack = isFirstStep && !allowBackOnFirstStep;
 
   return (
     <View className="overflow-hidden rounded-[30px] border border-border bg-card px-5 py-5">
@@ -33,9 +36,9 @@ export function SetupHeader({
       <View className="flex-row items-center justify-between gap-4">
         <Pressable
           onPress={onBack}
-          disabled={isFirstStep}
+          disabled={disableBack}
           className={`h-11 w-11 rounded-2xl items-center justify-center border border-white/10 bg-white/5 ${
-            isFirstStep ? "opacity-40" : "opacity-100"
+            disableBack ? "opacity-40" : "opacity-100"
           }`}
         >
           <ChevronLeft size={18} color="#ffffff" />
