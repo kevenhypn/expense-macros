@@ -2,6 +2,8 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { clamp, getBudgetTheme } from "../../src/utils/budgetTheme";
 import { formatMoney0 } from "../../src/utils/money";
+import { GLASS } from "../../src/theme/glass";
+import { LiquidGlassSurface } from "../ui/LiquidGlassSurface";
 import {
   BATTERY_TOTAL_HEIGHT,
   BATTERY_WIDTH,
@@ -16,10 +18,10 @@ interface BudgetHeroProps {
   resetLabel: string;
 }
 
-const PAD = 18;
-const R = 28;
-const GAP = 12;
-const INNER_RADIUS = 18;
+const PAD = GLASS.pad;
+const R = GLASS.rCard;
+const GAP = GLASS.gap;
+const INNER_RADIUS = GLASS.rPill;
 const RIGHT_COLUMN_WIDTH = BATTERY_WIDTH + 34;
 const MUTED_TEXT = "#9ca3af";
 
@@ -42,7 +44,13 @@ export const BudgetHero: React.FC<BudgetHeroProps> = ({
   const meterLabel = `${Math.round(remainingRatio * 100)}%`;
 
   return (
-    <View style={styles.card}>
+    <LiquidGlassSurface
+      variant="card"
+      interactive
+      tintColor={budgetTheme.accent}
+      sweepTrigger={monthLeft}
+      contentStyle={styles.cardContent}
+    >
       <View
         style={[
           styles.heroGlowPrimary,
@@ -73,14 +81,11 @@ export const BudgetHero: React.FC<BudgetHeroProps> = ({
             Spent {formatMoney0(discretionarySpent)} of {formatMoney0(budgetTotal)}
           </Text>
 
-          <View
-            style={[
-              styles.paceCard,
-              {
-                borderColor: budgetTheme.accentBorder,
-                backgroundColor: budgetTheme.accentSurface,
-              },
-            ]}
+          <LiquidGlassSurface
+            variant="card"
+            tintColor={budgetTheme.accent}
+            style={styles.paceCard}
+            contentStyle={styles.paceCardContent}
           >
             <Text style={styles.paceLabel}>Suggested pace</Text>
             <Text
@@ -97,7 +102,7 @@ export const BudgetHero: React.FC<BudgetHeroProps> = ({
                     suggestedDailyAmount
                   )} a day for the rest of the month.`}
             </Text>
-          </View>
+          </LiquidGlassSurface>
         </View>
 
         <View style={styles.rightColumn}>
@@ -113,19 +118,14 @@ export const BudgetHero: React.FC<BudgetHeroProps> = ({
           {meterLabel}
         </Text>
       </View>
-    </View>
+    </LiquidGlassSurface>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
+  cardContent: {
     position: "relative",
-    overflow: "hidden",
     padding: PAD,
-    borderRadius: R,
-    borderWidth: 1,
-    borderColor: "#2b382f",
-    backgroundColor: "#151d18",
   },
   heroGlowPrimary: {
     position: "absolute",
@@ -179,10 +179,11 @@ const styles = StyleSheet.create({
   paceCard: {
     width: "100%",
     marginTop: GAP,
+    borderRadius: INNER_RADIUS,
+  },
+  paceCardContent: {
     paddingHorizontal: 14,
     paddingVertical: 14,
-    borderRadius: INNER_RADIUS,
-    borderWidth: 1,
   },
   paceLabel: {
     color: MUTED_TEXT,

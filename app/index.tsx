@@ -1,8 +1,10 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
   TextInput,
+  PanResponder,
+  Keyboard,
   Pressable,
   ScrollView,
   RefreshControl,
@@ -10,27 +12,28 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  StyleSheet,
+  useWindowDimensions,
   Vibration,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { BlurView } from "expo-blur";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import Animated, {
   Easing,
   FadeInDown,
   runOnJS,
   useAnimatedStyle,
+  useAnimatedScrollHandler,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
 import {
   Settings,
   RefreshCw,
-  Trash2,
-  Pencil,
   ChevronLeft,
   ChevronRight,
-  Plus,
 } from "lucide-react-native";
 import { Transaction, TransactionCategory } from "../types";
 import {
@@ -43,8 +46,17 @@ import {
 } from "../lib/storage";
 import { useAppData } from "../hooks/useAppData";
 import { BudgetHero } from "../components/dashboard/BudgetHero";
+import {
+  TransactionRow,
+  TRANSACTION_ROW_DELETE_DURATION,
+} from "../components/dashboard/TransactionRow";
 import { CategoryGrid } from "../components/CategoryGrid";
+import { LiquidGlassSurface } from "../components/ui/LiquidGlassSurface";
+import { LiquidGlassIconButton } from "../components/ui/LiquidGlassIconButton";
+import { LiquidGlassChip } from "../components/ui/LiquidGlassChip";
+import { BottomDock } from "../components/ui/BottomDock";
 import { CATEGORY_STYLES, CATEGORY_TEXT_COLORS } from "../lib/categoryStyles";
+import { GLASS } from "../src/theme/glass";
 import { formatMoney0, formatMoney2 } from "../src/utils/money";
 import { getBudgetTheme } from "../src/utils/budgetTheme";
 
@@ -53,6 +65,7 @@ type FilterType = "All" | "Spending" | "Bills" | "Savings" | "Income";
 export default function Dashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const { config, transactions, setTransactions, isLoading, refresh } =
     useAppData();
 
@@ -66,6 +79,7 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [showAllMonthFlows, setShowAllMonthFlows] = useState(false);
   const [showAddSheet, setShowAddSheet] = useState(false);
+  const [isAddSheetBlurReady, setIsAddSheetBlurReady] = useState(false);
   const [viewMode, setViewMode] = useState<"day" | "period">("day");
   const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -80,8 +94,43 @@ export default function Dashboard() {
     previousTxs: Transaction[];
     nextTxs: Transaction[];
   } | null>(null);
+  const [deletingTxIds, setDeletingTxIds] = useState<string[]>([]);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteAnimationTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
+  const transactionsRef = useRef(transactions);
+  const pendingDeleteRef = useRef(pendingDelete);
+  const addAmountInputRef = useRef<TextInput>(null);
+  const addSheetFocusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const addSheetBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const addSheetProgress = useSharedValue(0);
+  const addSheetDragY = useSharedValue(0);
+  const scrollY = useSharedValue(0);
+
+  const focusAddAmountInput = useCallback(() => {
+    if (addSheetFocusTimerRef.current) {
+      clearTimeout(addSheetFocusTimerRef.current);
+    }
+    addSheetFocusTimerRef.current = setTimeout(() => {
+      addAmountInputRef.current?.focus();
+      addSheetFocusTimerRef.current = null;
+    }, 110);
+  }, []);
+
+  const prepareAddSheetBlur = useCallback(() => {
+    if (addSheetBlurTimerRef.current) {
+      clearTimeout(addSheetBlurTimerRef.current);
+    }
+    addSheetBlurTimerRef.current = setTimeout(() => {
+      setIsAddSheetBlurReady(true);
+      addSheetBlurTimerRef.current = null;
+    }, 120);
+  }, []);
 
   const spendingCategories = [
     "Food",
@@ -127,15 +176,49 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!showAddSheet) {
+      if (addSheetFocusTimerRef.current) {
+        clearTimeout(addSheetFocusTimerRef.current);
+        addSheetFocusTimerRef.current = null;
+      }
+      if (addSheetBlurTimerRef.current) {
+        clearTimeout(addSheetBlurTimerRef.current);
+        addSheetBlurTimerRef.current = null;
+      }
+      setIsAddSheetBlurReady(false);
+      addAmountInputRef.current?.blur();
+      addSheetDragY.value = 0;
       addSheetProgress.value = 0;
       return;
     }
 
-    addSheetProgress.value = withTiming(1, {
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [addSheetProgress, showAddSheet]);
+    setIsAddSheetBlurReady(false);
+    addSheetProgress.value = withTiming(
+      1,
+      {
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+      },
+      (finished) => {
+        if (!finished) return;
+        runOnJS(prepareAddSheetBlur)();
+        runOnJS(focusAddAmountInput)();
+      }
+    );
+  }, [
+    addSheetDragY,
+    addSheetProgress,
+    focusAddAmountInput,
+    prepareAddSheetBlur,
+    showAddSheet,
+  ]);
+
+  useEffect(() => {
+    transactionsRef.current = transactions;
+  }, [transactions]);
+
+  useEffect(() => {
+    pendingDeleteRef.current = pendingDelete;
+  }, [pendingDelete]);
 
   useEffect(() => {
     return () => {
@@ -143,6 +226,18 @@ export default function Dashboard() {
         clearTimeout(deleteTimerRef.current);
         deleteTimerRef.current = null;
       }
+
+      if (addSheetFocusTimerRef.current) {
+        clearTimeout(addSheetFocusTimerRef.current);
+        addSheetFocusTimerRef.current = null;
+      }
+      if (addSheetBlurTimerRef.current) {
+        clearTimeout(addSheetBlurTimerRef.current);
+        addSheetBlurTimerRef.current = null;
+      }
+
+      Object.values(deleteAnimationTimersRef.current).forEach(clearTimeout);
+      deleteAnimationTimersRef.current = {};
     };
   }, []);
 
@@ -153,6 +248,20 @@ export default function Dashboard() {
   }, [refresh]);
 
   const closeAddSheet = useCallback(() => {
+    if (addSheetFocusTimerRef.current) {
+      clearTimeout(addSheetFocusTimerRef.current);
+      addSheetFocusTimerRef.current = null;
+    }
+    if (addSheetBlurTimerRef.current) {
+      clearTimeout(addSheetBlurTimerRef.current);
+      addSheetBlurTimerRef.current = null;
+    }
+    setIsAddSheetBlurReady(false);
+    addAmountInputRef.current?.blur();
+    addSheetDragY.value = withTiming(0, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
     addSheetProgress.value = withTiming(
       0,
       {
@@ -165,15 +274,162 @@ export default function Dashboard() {
         }
       }
     );
-  }, [addSheetProgress]);
+  }, [addSheetDragY, addSheetProgress]);
 
   const addSheetBackdropStyle = useAnimatedStyle(() => ({
-    opacity: addSheetProgress.value * 0.6,
+    opacity:
+      addSheetProgress.value *
+      0.6 *
+      Math.max(0.32, 1 - Math.max(0, addSheetDragY.value) / 260),
   }));
 
   const addSheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - addSheetProgress.value) * 360 }],
-  }));
+    transform: [
+      {
+        translateY:
+          (1 - addSheetProgress.value) * windowHeight + addSheetDragY.value,
+      },
+    ],
+  }), [windowHeight]);
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y;
+  });
+
+  const snapAddSheetBack = useCallback(() => {
+    addSheetDragY.value = withTiming(0, {
+      duration: 180,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [addSheetDragY]);
+
+  const addSheetPanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > 6 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onPanResponderGrant: () => {
+          if (addSheetFocusTimerRef.current) {
+            clearTimeout(addSheetFocusTimerRef.current);
+            addSheetFocusTimerRef.current = null;
+          }
+          addAmountInputRef.current?.blur();
+          Keyboard.dismiss();
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const nextDrag =
+            gestureState.dy < 0 ? gestureState.dy * 0.35 : gestureState.dy;
+          addSheetDragY.value = Math.max(-36, Math.min(280, nextDrag));
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dy > 96 || gestureState.vy > 0.9) {
+            closeAddSheet();
+            return;
+          }
+          snapAddSheetBack();
+        },
+        onPanResponderTerminate: () => {
+          snapAddSheetBack();
+        },
+      }),
+    [addSheetDragY, closeAddSheet, snapAddSheetBack]
+  );
+
+  const handleStartEdit = useCallback((tx: Transaction) => {
+    setEditingId(tx.id);
+    setEditDate(tx.date);
+    setEditAmount(String(Math.abs(tx.amount)));
+    setEditNote(tx.note ?? "");
+    setEditCategory(tx.category);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingId(null);
+    setEditDate("");
+    setEditAmount("");
+    setEditNote("");
+    setEditCategory("Food");
+  }, []);
+
+  const commitPendingDelete = useCallback(() => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+    void saveTransactions(pending.nextTxs);
+  }, []);
+
+  const handleDeleteTransaction = useCallback((id: string) => {
+    if (deleteAnimationTimersRef.current[id]) return;
+
+    const currentTransactions = transactionsRef.current;
+    const txToDelete = currentTransactions.find((tx) => tx.id === id);
+    if (!txToDelete) return;
+
+    commitPendingDelete();
+
+    setDeletingTxIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    Vibration.vibrate(10);
+
+    deleteAnimationTimersRef.current[id] = setTimeout(() => {
+      delete deleteAnimationTimersRef.current[id];
+      setDeletingTxIds((prev) => prev.filter((txId) => txId !== id));
+
+      const previousTxs = transactionsRef.current;
+      if (!previousTxs.some((tx) => tx.id === id)) {
+        return;
+      }
+
+      const nextTxs = previousTxs.filter((tx) => tx.id !== id);
+      setTransactions(nextTxs);
+
+      const nextPendingDelete = {
+        tx: txToDelete,
+        previousTxs,
+        nextTxs,
+      };
+
+      pendingDeleteRef.current = nextPendingDelete;
+      setPendingDelete(nextPendingDelete);
+
+      deleteTimerRef.current = setTimeout(async () => {
+        await saveTransactions(nextTxs);
+        pendingDeleteRef.current = null;
+        setPendingDelete(null);
+        deleteTimerRef.current = null;
+      }, 5000);
+    }, TRANSACTION_ROW_DELETE_DURATION);
+  }, [commitPendingDelete, setTransactions]);
+
+  const handleUndoDelete = useCallback(async () => {
+    const pending = pendingDeleteRef.current;
+    if (!pending) return;
+
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+
+    setTransactions(pending.previousTxs);
+    await saveTransactions(pending.previousTxs);
+    pendingDeleteRef.current = null;
+    setPendingDelete(null);
+  }, [setTransactions]);
+
+  const openAddSheet = useCallback(() => {
+    if (addSheetFocusTimerRef.current) {
+      clearTimeout(addSheetFocusTimerRef.current);
+      addSheetFocusTimerRef.current = null;
+    }
+    setShowAddSheet(true);
+  }, []);
 
   if (isLoading) {
     return (
@@ -281,6 +537,9 @@ export default function Dashboard() {
     month: "short",
     day: "numeric",
   })}`;
+  const dockBottom = insets.bottom + 6;
+  const dockHeight = 56;
+  const scrollBottomPadding = dockBottom + dockHeight + 36;
 
   const buildSpendingTotals = (txs: Transaction[]) => {
     const netTotals: Record<SpendingCategory, number> = {
@@ -391,46 +650,6 @@ export default function Dashboard() {
     await handleAddTransaction();
   };
 
-  const handleDeleteTransaction = async (id: string) => {
-    const txToDelete = transactions.find((tx) => tx.id === id);
-    if (!txToDelete) return;
-
-    // Finalize any existing pending delete immediately.
-    if (deleteTimerRef.current && pendingDelete) {
-      clearTimeout(deleteTimerRef.current);
-      deleteTimerRef.current = null;
-      await saveTransactions(pendingDelete.nextTxs);
-      setPendingDelete(null);
-    }
-
-    const nextTxs = transactions.filter((tx) => tx.id !== id);
-    setTransactions(nextTxs);
-    setPendingDelete({ tx: txToDelete, previousTxs: transactions, nextTxs });
-    Vibration.vibrate(10);
-
-    deleteTimerRef.current = setTimeout(async () => {
-      await saveTransactions(nextTxs);
-      setPendingDelete(null);
-      deleteTimerRef.current = null;
-    }, 5000);
-  };
-
-  const handleStartEdit = (tx: Transaction) => {
-    setEditingId(tx.id);
-    setEditDate(tx.date);
-    setEditAmount(String(Math.abs(tx.amount)));
-    setEditNote(tx.note ?? "");
-    setEditCategory(tx.category);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditDate("");
-    setEditAmount("");
-    setEditNote("");
-    setEditCategory("Food");
-  };
-
   const handleSaveEdit = async () => {
     if (!editingId) return;
     const parsedAmount = parseFloat(editAmount);
@@ -453,17 +672,6 @@ export default function Dashboard() {
     await saveTransactions(nextTxs);
     Vibration.vibrate(10);
     handleCancelEdit();
-  };
-
-  const handleUndoDelete = async () => {
-    if (!pendingDelete) return;
-    if (deleteTimerRef.current) {
-      clearTimeout(deleteTimerRef.current);
-      deleteTimerRef.current = null;
-    }
-    setTransactions(pendingDelete.previousTxs);
-    await saveTransactions(pendingDelete.previousTxs);
-    setPendingDelete(null);
   };
 
   // Filter Logic
@@ -501,6 +709,7 @@ export default function Dashboard() {
   };
 
   const filteredList = getFilteredTransactions();
+  const deletingTxIdSet = new Set(deletingTxIds);
   const parsedQuickLogAmount = parseFloat(amount);
   const canSaveQuickLog =
     !isNaN(parsedQuickLogAmount) && parsedQuickLogAmount > 0;
@@ -522,7 +731,7 @@ export default function Dashboard() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView edges={["top", "left", "right"]} className="flex-1 bg-background">
       <View pointerEvents="none" className="absolute inset-0">
         <View
           className="absolute -top-24 right-0 h-64 w-64 rounded-full"
@@ -533,13 +742,12 @@ export default function Dashboard() {
           style={{ backgroundColor: budgetTheme.accentGlowSoft }}
         />
       </View>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <ScrollView
+      <View className="flex-1">
+        <Animated.ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingBottom: 176 }}
+          onScroll={scrollHandler}
+          scrollEventThrottle={16}
+          contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -550,7 +758,7 @@ export default function Dashboard() {
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
-          <View className="p-6 flex-row justify-between items-center">
+          <View className="px-6 pb-3 pt-4 flex-row items-start justify-between">
             <View className="gap-1">
               <View className="flex-row items-center gap-2">
                 <Pressable
@@ -578,16 +786,34 @@ export default function Dashboard() {
               </View>
               <Text className="text-xs text-gray-400">Tap to change</Text>
             </View>
-            <View className="flex-row gap-4">
-              <Pressable onPress={onRefresh} className="p-2">
-                <RefreshCw size={24} color="#9ca3af" />
-              </Pressable>
-              <Link href="/setup" asChild>
-                <Pressable className="p-2">
-                  <Settings size={24} color="#9ca3af" />
-                </Pressable>
-              </Link>
-            </View>
+            <LiquidGlassSurface
+              variant="toolbar"
+              scrollY={scrollY}
+              tintColor={budgetTheme.accent}
+              style={{ borderRadius: GLASS.rPill }}
+              contentStyle={{
+                flexDirection: "row",
+                gap: 8,
+                padding: 6,
+              }}
+            >
+              <LiquidGlassIconButton
+                icon={<RefreshCw size={22} color="#f5f7f6" />}
+                onPress={onRefresh}
+                size={42}
+                tintColor={budgetTheme.accent}
+                scrollY={scrollY}
+                accessibilityLabel="Refresh budget"
+              />
+              <LiquidGlassIconButton
+                icon={<Settings size={22} color="#f5f7f6" />}
+                onPress={() => router.push("/setup")}
+                size={42}
+                tintColor={budgetTheme.accent}
+                scrollY={scrollY}
+                accessibilityLabel="Open settings"
+              />
+            </LiquidGlassSurface>
           </View>
 
           {viewMode === "day" ? (
@@ -621,7 +847,7 @@ export default function Dashboard() {
               {/* Log Section */}
               <Animated.View
                 entering={FadeInDown.duration(300).delay(200)}
-                className="mx-6 mb-2 min-h-[360px] overflow-hidden rounded-[28px] border border-border bg-card p-5"
+                className="mx-6 mb-2 overflow-hidden rounded-[28px] border border-border bg-card p-5"
               >
                 <View className="mb-5 flex-row items-center justify-between gap-3">
                   <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
@@ -635,75 +861,18 @@ export default function Dashboard() {
                 {/* Transaction List */}
                 <View className="gap-3">
                   {filteredList.map((tx) => (
-                    <View
+                    <TransactionRow
                       key={tx.id}
-                      className={`rounded-[18px] border border-border bg-cardAlt flex-row items-center gap-3 overflow-hidden ${
-                        tx.isSystem ? "opacity-60" : "opacity-100"
-                      }`}
-                    >
-                      <View
-                        style={{
-                          width: 6,
-                          alignSelf: "stretch",
-                          backgroundColor:
-                            CATEGORY_STYLES[tx.category].selectedBg,
-                        }}
-                      />
-                      <View className="flex-1 flex-row items-center justify-between gap-3 px-2 py-3">
-                        <View className="min-w-0 flex-1">
-                          {tx.note ? (
-                            <>
-                              <Text className="font-medium text-white">
-                                {tx.note}
-                              </Text>
-                              <Text className="text-xs text-gray-500">
-                                {tx.category} • {tx.date}{" "}
-                                {tx.isSystem && "(Auto)"}
-                              </Text>
-                            </>
-                          ) : (
-                            <>
-                              <Text className="font-medium text-white">
-                                {tx.category}
-                              </Text>
-                              <Text className="text-xs text-gray-500">
-                                {tx.category} • {tx.date}{" "}
-                                {tx.isSystem && "(Auto)"}
-                              </Text>
-                            </>
-                          )}
-                        </View>
-                        <View className="shrink-0 flex-row items-center gap-2">
-                          <Text
-                            className={`text-base font-semibold ${
-                              tx.amount > 0 ? "" : "text-white"
-                            }`}
-                            style={
-                              tx.amount > 0
-                                ? { color: budgetTheme.accentText }
-                                : undefined
-                            }
-                          >
-                            {formatMoney2(tx.amount)}
-                          </Text>
-                          <Pressable
-                            onPress={() => handleStartEdit(tx)}
-                            className="rounded-[12px] bg-white/5 p-2"
-                          >
-                            <Pencil size={18} color="#6b7280" />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleDeleteTransaction(tx.id)}
-                            className="rounded-[12px] bg-white/5 p-2"
-                          >
-                            <Trash2 size={18} color="#6b7280" />
-                          </Pressable>
-                        </View>
-                      </View>
-                    </View>
+                      tx={tx}
+                      accentTextColor={budgetTheme.accentText}
+                      showActions={!tx.isSystem}
+                      isDeleting={deletingTxIdSet.has(tx.id)}
+                      onEdit={handleStartEdit}
+                      onDelete={handleDeleteTransaction}
+                    />
                   ))}
                   {filteredList.length === 0 && (
-                    <View className="items-center mt-10 gap-2">
+                    <View className="items-center gap-2 py-12">
                       <Text className="text-center text-gray-600">
                         No transactions found
                       </Text>
@@ -755,21 +924,13 @@ export default function Dashboard() {
                     </Text>
                   </View>
                 </View>
-                <View className="mt-5 flex-row flex-wrap gap-2">
-                  <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
+                <View className="mt-5 rounded-[20px] border border-white/8 bg-white/5 px-4 py-4">
+                  <View className="flex-row items-center justify-between gap-3">
                     <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                      Spent
+                      Spent this month
                     </Text>
-                    <Text className="mt-1 text-base font-semibold text-white">
+                    <Text className="text-lg font-semibold text-white">
                       {formatMoney0(discretionarySpent)}
-                    </Text>
-                  </View>
-                  <View className="rounded-full border border-white/10 bg-white/5 px-4 py-3">
-                    <Text className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-                      Budget mode
-                    </Text>
-                    <Text className="mt-1 text-base font-semibold text-white">
-                      {rolloverUnspent ? "Rollover" : "Fixed"}
                     </Text>
                   </View>
                 </View>
@@ -884,57 +1045,12 @@ export default function Dashboard() {
                   Month log
                 </Text>
                 {visiblePeriodLogTxs.map((tx) => (
-                  <View
+                  <TransactionRow
                     key={tx.id}
-                    className={`rounded-[18px] border border-border bg-cardAlt flex-row items-center gap-3 overflow-hidden ${
-                      tx.isSystem ? "opacity-50" : "opacity-100"
-                    }`}
-                  >
-                    <View
-                      style={{
-                        width: 6,
-                        alignSelf: "stretch",
-                        backgroundColor: CATEGORY_STYLES[tx.category].selectedBg,
-                      }}
-                    />
-                    <View className="flex-1 flex-row items-center justify-between gap-3 px-2 py-3">
-                      <View className="min-w-0 flex-1">
-                        {tx.note ? (
-                          <>
-                            <Text className="font-medium text-white">
-                              {tx.note}
-                            </Text>
-                            <Text className="text-xs text-gray-500">
-                              {tx.category} • {tx.date}{" "}
-                              {tx.isSystem && "(Auto)"}
-                            </Text>
-                          </>
-                        ) : (
-                          <>
-                            <Text className="font-medium text-white">
-                              {tx.category}
-                            </Text>
-                            <Text className="text-xs text-gray-500">
-                              {tx.category} • {tx.date}{" "}
-                              {tx.isSystem && "(Auto)"}
-                            </Text>
-                          </>
-                        )}
-                      </View>
-                      <Text
-                        className={`text-base font-semibold ${
-                          tx.amount > 0 ? "" : "text-white"
-                        }`}
-                        style={
-                          tx.amount > 0
-                            ? { color: budgetTheme.accentText }
-                            : undefined
-                        }
-                      >
-                        {formatMoney2(tx.amount)}
-                      </Text>
-                    </View>
-                  </View>
+                    tx={tx}
+                    accentTextColor={budgetTheme.accentText}
+                    systemOpacityClassName="opacity-50"
+                  />
                 ))}
                 {visiblePeriodLogTxs.length === 0 && (
                   <Text className="text-center text-gray-600 mt-2">
@@ -944,56 +1060,7 @@ export default function Dashboard() {
               </View>
             </Animated.View>
           )}
-        </ScrollView>
-
-        <View className="border-t border-white/8 bg-background px-6 py-3">
-          <View className="flex-row items-stretch rounded-[18px] border border-border bg-card p-1.5">
-            <Pressable
-              onPress={() => setViewMode("day")}
-              className="flex-1 items-center rounded-xl py-3"
-              style={
-                viewMode === "day"
-                  ? { backgroundColor: budgetTheme.accent }
-                  : undefined
-              }
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  viewMode === "day" ? "" : "text-gray-500"
-                }`}
-                style={
-                  viewMode === "day"
-                    ? { color: budgetTheme.onAccent }
-                    : undefined
-                }
-              >
-                Today
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setViewMode("period")}
-              className="flex-1 items-center rounded-xl py-3"
-              style={
-                viewMode === "period"
-                  ? { backgroundColor: budgetTheme.accent }
-                  : undefined
-              }
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  viewMode === "period" ? "" : "text-gray-500"
-                }`}
-                style={
-                  viewMode === "period"
-                    ? { color: budgetTheme.onAccent }
-                    : undefined
-                }
-              >
-                Month
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+        </Animated.ScrollView>
 
         <Modal
           transparent
@@ -1006,14 +1073,39 @@ export default function Dashboard() {
             className="flex-1 justify-end"
           >
             <Pressable
-              className="flex-1 bg-black/60 justify-end"
+              className="absolute inset-0"
               onPress={handleCancelEdit}
             >
-              <Pressable
-                className="rounded-t-[32px] border-t border-border bg-background px-6 pt-4"
-                style={{ paddingBottom: Math.max(insets.bottom, 20) }}
-                onPress={() => {}}
-              >
+              {Platform.OS === "ios" ? (
+                <BlurView
+                  intensity={24}
+                  tint="systemMaterialDark"
+                  style={StyleSheet.absoluteFill}
+                />
+              ) : null}
+              <View
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  { backgroundColor: "rgba(3, 5, 4, 0.46)" },
+                ]}
+              />
+            </Pressable>
+            <LiquidGlassSurface
+              variant="card"
+              tintColor={budgetTheme.accent}
+              style={{
+                borderTopLeftRadius: 32,
+                borderTopRightRadius: 32,
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+              }}
+              contentStyle={{
+                paddingHorizontal: GLASS.pad,
+                paddingTop: 16,
+                paddingBottom: Math.max(insets.bottom, 20),
+              }}
+            >
+              <Pressable onPress={() => {}}>
                 <View className="items-center pb-3">
                   <View className="h-1.5 w-14 rounded-full bg-white/10" />
                 </View>
@@ -1031,14 +1123,11 @@ export default function Dashboard() {
                         Edit transaction
                       </Text>
                     </View>
-                    <Pressable
+                    <LiquidGlassChip
+                      label="Close"
                       onPress={handleCancelEdit}
-                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
-                    >
-                      <Text className="text-sm font-medium text-gray-300">
-                        Close
-                      </Text>
-                    </Pressable>
+                      tintColor={budgetTheme.accent}
+                    />
                   </View>
                   <View className="flex-row gap-3">
                     <TextInput
@@ -1095,66 +1184,144 @@ export default function Dashboard() {
                   </View>
                 </ScrollView>
               </Pressable>
-            </Pressable>
+            </LiquidGlassSurface>
           </KeyboardAvoidingView>
         </Modal>
 
-        <Modal
-          transparent
-          animationType="none"
-          visible={showAddSheet}
-          onRequestClose={closeAddSheet}
+      </View>
+
+      <BottomDock
+        items={[
+          { key: "day", label: "Today" },
+          { key: "period", label: "Month" },
+        ]}
+        value={viewMode}
+        onChange={(next) => setViewMode(next as "day" | "period")}
+        onAddPress={openAddSheet}
+        tintColor={budgetTheme.accent}
+        scrollY={scrollY}
+        bottomOffset={dockBottom}
+      />
+
+      {pendingDelete && (
+        <View
+          className="absolute left-6 right-6 rounded-[18px] bg-card border border-border px-4 py-3 flex-row items-center justify-between"
+          style={{
+            bottom: dockBottom + dockHeight + 16,
+          }}
         >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1 justify-end"
+          <Text className="text-sm text-gray-200">
+            Deleted {pendingDelete.tx.category}
+          </Text>
+          <Pressable onPress={handleUndoDelete} className="px-3 py-1">
+            <Text className="text-sm text-blue-400 font-semibold">Undo</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <View
+        pointerEvents={showAddSheet ? "auto" : "none"}
+        style={[
+          StyleSheet.absoluteFillObject,
+          {
+            zIndex: 60,
+          },
+        ]}
+      >
+        <Animated.View
+          className="absolute inset-0"
+          style={addSheetBackdropStyle}
+        >
+          {Platform.OS === "ios" && isAddSheetBlurReady ? (
+            <BlurView
+              intensity={22}
+              tint="systemMaterialDark"
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              { backgroundColor: "rgba(3, 5, 4, 0.42)" },
+            ]}
+          />
+          <Pressable className="flex-1" onPress={closeAddSheet} />
+        </Animated.View>
+        <KeyboardAvoidingView
+          pointerEvents="box-none"
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              justifyContent: "flex-end",
+            },
+          ]}
+        >
+          <Animated.View
+            className="overflow-hidden"
+            style={[
+              addSheetStyle,
+              {
+                maxHeight: "82%",
+              },
+            ]}
           >
-            <Animated.View
-              className="absolute inset-0 bg-black"
-              style={addSheetBackdropStyle}
+            <LiquidGlassSurface
+              variant="card"
+              ambientMotion={false}
+              blurEnabled={isAddSheetBlurReady}
+              tintColor={budgetTheme.accent}
+              style={{
+                borderTopLeftRadius: 32,
+                borderTopRightRadius: 32,
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+              }}
+              contentStyle={{
+                paddingHorizontal: GLASS.pad,
+                paddingTop: 16,
+                paddingBottom: Math.max(insets.bottom, 20),
+                maxHeight: "100%",
+              }}
             >
-              <Pressable
-                className="flex-1"
-                onPress={closeAddSheet}
-              />
-            </Animated.View>
-            <Animated.View
-              className="rounded-t-[32px] border-t border-border bg-background px-6 pt-4"
-              style={[
-                addSheetStyle,
-                {
-                  maxHeight: "82%",
-                  paddingBottom: Math.max(insets.bottom, 20),
-                },
-              ]}
-            >
-              <View className="items-center pb-3">
-                <View className="h-1.5 w-14 rounded-full bg-white/10" />
+              <View
+                className="items-center pb-3"
+                {...addSheetPanResponder.panHandlers}
+              >
+                <View className="items-center px-6 py-2">
+                  <View className="h-1.5 w-14 rounded-full bg-white/10" />
+                </View>
               </View>
+              <View className="flex-row items-center justify-between gap-3">
+                <View className="min-w-0 flex-1 gap-1">
+                  <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Quick log
+                  </Text>
+                  <Text className="text-2xl font-bold text-white">
+                    Add transaction
+                  </Text>
+                </View>
+                <LiquidGlassChip
+                  label="Close"
+                  onPress={closeAddSheet}
+                  tintColor={budgetTheme.accent}
+                />
+              </View>
+
               <ScrollView
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={
+                  Platform.OS === "ios" ? "interactive" : "on-drag"
+                }
+                removeClippedSubviews
                 showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ gap: 20, paddingBottom: 8 }}
+                contentContainerStyle={{
+                  gap: 20,
+                  paddingTop: 20,
+                  paddingBottom: 8,
+                }}
+                style={{ flexShrink: 1 }}
               >
-                <View className="flex-row items-center justify-between gap-3">
-                  <View className="min-w-0 flex-1 gap-1">
-                    <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Quick log
-                    </Text>
-                    <Text className="text-2xl font-bold text-white">
-                      Add transaction
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={closeAddSheet}
-                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2"
-                  >
-                    <Text className="text-sm font-medium text-gray-300">
-                      Close
-                    </Text>
-                  </Pressable>
-                </View>
-
                 <View className="rounded-[28px] border border-border bg-cardAlt px-5 py-5">
                   <Text className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Amount
@@ -1164,13 +1331,13 @@ export default function Dashboard() {
                       $
                     </Text>
                     <TextInput
+                      ref={addAmountInputRef}
                       keyboardType="decimal-pad"
                       placeholder="0.00"
                       placeholderTextColor="#6b7280"
                       className="flex-1 text-[52px] font-bold leading-[60px] text-white"
                       value={amount}
                       onChangeText={setAmount}
-                      autoFocus
                       style={{ paddingTop: 6, paddingBottom: 1 }}
                     />
                   </View>
@@ -1252,45 +1419,10 @@ export default function Dashboard() {
                   </Text>
                 </Pressable>
               </ScrollView>
-            </Animated.View>
-          </KeyboardAvoidingView>
-        </Modal>
-      </KeyboardAvoidingView>
-
-      {viewMode === "day" ? (
-        <Pressable
-          onPress={() => setShowAddSheet(true)}
-          className="absolute right-6 h-16 w-16 items-center justify-center rounded-full border"
-          style={{
-            bottom: insets.bottom + 88,
-            backgroundColor: budgetTheme.accent,
-            borderColor: budgetTheme.accentBorderStrong,
-            shadowColor: "#000000",
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.24,
-            shadowRadius: 18,
-            elevation: 8,
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Add transaction"
-        >
-          <Plus size={28} color={budgetTheme.onAccent} strokeWidth={2.5} />
-        </Pressable>
-      ) : null}
-
-      {pendingDelete && (
-        <View
-          className="absolute left-6 right-6 rounded-[18px] bg-card border border-border px-4 py-3 flex-row items-center justify-between"
-          style={{ bottom: insets.bottom + (viewMode === "day" ? 96 : 24) }}
-        >
-          <Text className="text-sm text-gray-200">
-            Deleted {pendingDelete.tx.category}
-          </Text>
-          <Pressable onPress={handleUndoDelete} className="px-3 py-1">
-            <Text className="text-sm text-blue-400 font-semibold">Undo</Text>
-          </Pressable>
-        </View>
-      )}
+            </LiquidGlassSurface>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </View>
 
       {showDatePicker &&
         (Platform.OS === "ios" ? (

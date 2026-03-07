@@ -1,8 +1,11 @@
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { ChevronLeft } from "lucide-react-native";
 import { StepDots } from "./StepDots";
 import { DEFAULT_BUDGET_THEME } from "../../src/utils/budgetTheme";
+import { GLASS } from "../../src/theme/glass";
+import { LiquidGlassSurface } from "../ui/LiquidGlassSurface";
+import { LiquidGlassIconButton } from "../ui/LiquidGlassIconButton";
 
 type SetupHeaderProps = {
   currentStep: number;
@@ -27,22 +30,22 @@ export function SetupHeader({
   const disableBack = isFirstStep && !allowBackOnFirstStep;
 
   return (
-    <View className="overflow-hidden rounded-[30px] border border-border bg-card px-5 py-5">
+    <LiquidGlassSurface
+      variant="card"
+      contentStyle={{ paddingHorizontal: GLASS.pad, paddingVertical: GLASS.pad }}
+    >
       <View
         className="absolute -right-10 -top-12 h-32 w-32 rounded-full"
         style={{ backgroundColor: accentGlowColor }}
       />
       <View className="absolute bottom-0 left-10 h-20 w-20 rounded-full bg-white/5" />
       <View className="flex-row items-center justify-between gap-4">
-        <Pressable
-          onPress={onBack}
-          disabled={disableBack}
-          className={`h-11 w-11 rounded-2xl items-center justify-center border border-white/10 bg-white/5 ${
-            disableBack ? "opacity-40" : "opacity-100"
-          }`}
-        >
-          <ChevronLeft size={18} color="#ffffff" />
-        </Pressable>
+        <LiquidGlassIconButton
+          icon={<ChevronLeft size={18} color="#ffffff" />}
+          onPress={disableBack ? undefined : onBack}
+          size={44}
+          style={{ opacity: disableBack ? 0.4 : 1 }}
+        />
 
         <View className="min-w-0 flex-1 items-end gap-2">
           <Text className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-gray-300">
@@ -65,6 +68,6 @@ export function SetupHeader({
           activeColor={activeStepColor}
         />
       </View>
-    </View>
+    </LiquidGlassSurface>
   );
 }

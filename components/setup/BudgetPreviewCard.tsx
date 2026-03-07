@@ -4,6 +4,8 @@ import { calculateFinancials, daysInMonth } from "../../lib/storage";
 import { Bill, BudgetConfig, SavingsGoal } from "../../types";
 import { formatCurrency } from "../../src/utils/format";
 import { DEFAULT_BUDGET_THEME } from "../../src/utils/budgetTheme";
+import { GLASS } from "../../src/theme/glass";
+import { LiquidGlassSurface } from "../ui/LiquidGlassSurface";
 
 type BudgetPreviewCardProps = {
   monthlyIncome: number;
@@ -43,7 +45,10 @@ export function BudgetPreviewCard({
   const dailyBudget = monthDays > 0 ? availableToSpend / monthDays : 0;
 
   return (
-    <View className="overflow-hidden rounded-[32px] border border-border bg-card px-5 py-5">
+    <LiquidGlassSurface
+      variant="card"
+      contentStyle={{ paddingHorizontal: GLASS.pad, paddingVertical: GLASS.pad }}
+    >
       <View
         className="absolute -right-6 top-0 h-24 w-24 rounded-full"
         style={{ backgroundColor: accentGlowColor }}
@@ -122,6 +127,6 @@ export function BudgetPreviewCard({
           </Text>
         </View>
       </View>
-    </View>
+    </LiquidGlassSurface>
   );
 }

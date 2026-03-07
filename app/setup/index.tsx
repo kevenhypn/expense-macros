@@ -33,11 +33,13 @@ import {
 import { PRIVACY_POLICY_URL, SUPPORT_URL } from "../../src/constants/urls";
 import { SetupHeader } from "../../components/setup/SetupHeader";
 import { BudgetPreviewCard } from "../../components/setup/BudgetPreviewCard";
+import { LiquidGlassSurface } from "../../components/ui/LiquidGlassSurface";
 import { formatCurrency, parseMoneyInput } from "../../src/utils/format";
 import {
   DEFAULT_BUDGET_THEME,
   getBudgetTheme,
 } from "../../src/utils/budgetTheme";
+import { GLASS } from "../../src/theme/glass";
 
 type SetupStepKey = "income" | "bills" | "savings" | "review";
 
@@ -60,14 +62,17 @@ function StepCard({
   accentGlowColor?: string;
 }) {
   return (
-    <View className="overflow-hidden rounded-[32px] border border-border bg-card px-5 py-5">
+    <LiquidGlassSurface
+      variant="card"
+      contentStyle={{ paddingHorizontal: GLASS.pad, paddingVertical: GLASS.pad }}
+    >
       <View
         className="absolute -right-8 -top-8 h-24 w-24 rounded-full"
         style={{ backgroundColor: accentGlowColor }}
       />
       <View className="absolute bottom-0 left-10 h-16 w-16 rounded-full bg-white/5" />
       <View className="gap-5">{children}</View>
-    </View>
+    </LiquidGlassSurface>
   );
 }
 
@@ -359,7 +364,10 @@ export default function SetupWizard() {
   };
 
   const renderAbout = () => (
-    <View className="rounded-[28px] border border-white/8 bg-white/5 px-4 py-4">
+    <LiquidGlassSurface
+      variant="card"
+      contentStyle={{ paddingHorizontal: GLASS.pad, paddingVertical: GLASS.pad }}
+    >
       <Text className="text-xs font-semibold uppercase tracking-[1.1px] text-gray-500">
         About
       </Text>
@@ -380,7 +388,7 @@ export default function SetupWizard() {
           <Text className="text-sm font-semibold text-gray-200">Support</Text>
         </Pressable>
       </View>
-    </View>
+    </LiquidGlassSurface>
   );
 
   const renderIncomeStep = () => (
