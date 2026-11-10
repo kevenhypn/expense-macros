@@ -1,43 +1,95 @@
 # Expense Macros
 
-Expense Macros is a local-first daily spending tracker for iPhone, Android, and the web. Set your monthly take-home income, recurring bills, and savings target. The app turns the rest into a daily spending target. Log expenses, refunds, and extra income as you go.
+Expense Macros turns monthly take-home income, recurring bills, and a savings target into a daily spending pace. Log expenses, refunds, and extra income as you go. The plan and the log stay on the device. There is no account, bank connection, or cloud sync.
 
-- **Today** shows how much you have left, with a week picker and daily log.
-- **Activity** shows monthly spending by category and a filterable log. Tap a transaction to edit or delete it; the delete message offers undo.
-- **Plan** shows what you have set aside and lets you adjust your monthly targets. The welcome screen has an isolated sample plan you can try without saving anything.
+## Run it on a Mac
 
-Amounts use USD. Budgets use calendar months and the device's local date. A fixed daily pace divides the planned flexible budget by the days in the month; an adaptive pace also carries earlier entries forward. Extra income increases the monthly budget. Bills or savings logged as transactions count as extra outflows beyond the planned allocations. Changing the plan recalculates the displayed targets for all months, while keeping the original transaction log intact.
+You need Node.js 22 or newer. This repo pins that in `.nvmrc`.
 
-## Use on iPhone
+```bash
+node -v
+```
 
-**Home Screen app:** Open the deployed HTTPS URL in Safari, tap **Share → Add to Home Screen**, enable **Open as Web App**, and tap **Add**. Open it once while online before going offline. No App Store submission is needed for this option.
+If that is missing or older than 22:
 
-**Preview from your Mac:** Run the web build below. Open the Mac's local network address on the iPhone while both devices are on the same Wi-Fi. Plain HTTP previews work online, but require HTTPS for offline operation. For a native preview, Expo SDK 54 also supports the compatible iOS Expo Go client: run `npm start` and scan the QR code from the same network.
+```bash
+# Homebrew
+brew install node@22
+brew link --overwrite node@22
 
-**Native TestFlight/App Store build:** This project retains the iOS bundle ID `com.kevenhypn.expensemacros`. With an Expo account and Apple signing set up, run `eas build --platform ios --profile production`, then submit the build to App Store Connect for TestFlight. Update the build number if that number is already used.
+# or nvm, from the repo root
+nvm install
+nvm use
+```
 
-Data is stored on the device in the original Expo AsyncStorage keys. An update to an existing native install with the same identity can read its saved plan and ledger. The Home Screen web app, Expo Go, and a signed native install have separate storage and do not sync. Use the same installed app for ongoing logging.
+Then:
 
-## Develop and check
+```bash
+git clone https://github.com/kevenhypn/expense-macros.git
+cd expense-macros
+git checkout cursor/audit-fixes-6f9b
+make dev
+```
 
-Node 22 recommended.
+`make dev` installs the lockfile (`npm ci`) if `node_modules` is missing and starts the web app at <http://localhost:8081>. Open that address if the browser does not. On the first screen, choose **Try sample data** or **Create a plan**.
 
-```sh
+The same checks the project uses:
+
+```bash
+make check
+```
+
+That is `npm run typecheck` and `npm test`. Dependencies are pinned by `package-lock.json`. Use `npm ci`, not `npm install`, so a fresh clone matches this lockfile.
+
+`make` is the one command. The same steps without it:
+
+```bash
 npm ci
-npm run typecheck
 npm test
-npm start
+npm run dev
 ```
 
-Build and serve the installable web version:
+## How the numbers work
 
-```sh
-npm run build:web
-python3 -m http.server 8765 --bind 0.0.0.0 --directory dist
+Amounts are US dollars. Dates are the device’s local calendar days, and a budget period is a calendar month.
+
+- Left for spending = take-home income − recurring bills − savings.
+- **Fixed pace:** that amount, plus extra income received on or before the day you are viewing, divided across every day of the month. Spending on other days does not change today’s target.
+- **Adaptive pace:** what is left after earlier posted activity, plus today’s extra income, divided across the days still left including today.
+- Today’s posted spending is then subtracted in full. A refund reduces that spending.
+- Pending transactions stay in the log and out of every total until you edit them and turn pending off.
+- Older automatic income, bill, and savings rows are kept in storage and ignored. The plan already counts them.
+
+The Today card writes the equation under the number, so the target, the spending, and the amount left are the same cents.
+
+## Import
+
+Activity → Import. Paste one transaction per line, review every row, then save. Nothing is stored before that confirmation.
+
+```text
+2026-11-09 | -12.40 | Food | Lunch | Checking | posted
+2026-11-10 | -8.40 | Other | Pharmacy | Visa | pending
 ```
 
-Open `http://localhost:8765/` on the Mac. To serve under a subpath, build with `EXPENSE_MACROS_BASE_PATH=/expense-macros npm run build:web` and serve the result from that directory.
+Fields are date, amount, category, and optional description, account, and status. Separate them with `|`, a comma, a semicolon, or a tab. Quote a field that contains a comma. An amount without a sign is an expense, unless the category is Income. Dates can be `2026-11-10`, `11/10/2026`, or `Nov 10, 2026`.
 
-For GitHub Pages, set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**. With this code on the default branch, manually run **Publish iPhone web app** from the Actions tab. Use the URL reported by the deployment. The workflow builds and checks the app before publishing.
+## iPhone
 
-Generate the native and Home Screen icons with `npm run assets:generate`.
+**Home Screen app.** After this branch is published, open the HTTPS URL in Safari, tap Share → Add to Home Screen, turn on Open as Web App, and add it. Open it once while online before using it offline.
+
+**Preview from the Mac.** Run `make dev`. On the iPhone, open the Mac’s `http://` address shown by Expo while both devices are on the same Wi-Fi. Offline use needs the HTTPS Home Screen app. For a native preview, run `npm start` and scan the QR code with a current Expo Go.
+
+**TestFlight.** The iOS bundle id is still `com.kevenhypn.expensemacros`. With Expo and Apple signing set up, `eas build --platform ios --profile production`, then submit that build. Bump the build number if Apple already has it.
+
+The Home Screen app, Expo Go, and a signed install do not share storage.
+
+## GitHub Pages
+
+Settings → Pages → Build and deployment → Source: GitHub Actions. On the default branch, run **Publish iPhone web app**. The workflow uses Node 22, runs the checks, and publishes the web build. For a subpath build locally:
+
+```bash
+EXPENSE_MACROS_BASE_PATH=/expense-macros npm run build:web
+python3 -m http.server 8765 --directory dist
+```
+
+Generate the app icons with `npm run assets:generate`.

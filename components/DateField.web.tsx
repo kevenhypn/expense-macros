@@ -8,6 +8,6 @@ export function DateField({ value, onChange }: { value: string; onChange: (value
     <Txt style={s.label}>Date</Txt>
     <input type="date" value={value} max={isoDate()} aria-label="Date" onChange={event => onChange(event.target.value)}
       style={{ boxSizing: "border-box", width: "100%", minWidth: 0, height: 48, border: `1px solid ${c.border}`,
-        borderRadius: 13, padding: "0 12px", background: c.bg, color: c.ink, colorScheme: scheme, font: "16px system-ui" }} />
+        borderRadius: 10, padding: "0 12px", background: c.bg, color: c.ink, colorScheme: scheme, font: "16px system-ui" }} />
   </View>;
 }

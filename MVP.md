@@ -1,12 +1,31 @@
-# Expense Macros: product and storage notes
+# Expense Macros
 
-The primary workflow is **plan → check today's allowance → log a transaction**. Monthly activity and plan settings are separate from the daily screen. The same Expo UI ships on native and the web.
+Local daily spending tracker. One Expo UI for web, iOS, and Android.
 
-- A plan sets monthly income, recurring bills, savings (USD or percentage), and a fixed or adaptive daily pace.
-- Transactions are dated in local time and stored as signed amounts. Expenses are negative; refunds and extra income are positive. A refund keeps the category of the original expense.
-- Planned income, bills, and savings are accounted for directly from the plan. Old generated rows are preserved in storage but excluded from totals and the editable activity log to prevent double counting.
-- An extra bill payment or savings contribution logged manually reduces the flexible budget; a refund adds to it. Extra income increases the month balance and, in adaptive mode, changes subsequent daily targets.
-- The plan is applied to calendar months. History records transactions, not past plan versions.
-- There is no account, bank connection, or cloud sync. The demo is held in memory separately from saved entries.
+## Flow
 
-Budget calculations live in `lib/budget.ts`; `lib/storage.ts` keeps the original AsyncStorage keys. `app/index.tsx` handles navigation and persistence; the dashboard and forms are split into focused components.
+Plan → today’s pace → log a transaction. Activity is the month: category totals, search, filters, and import. Sample data stays in memory until you leave it.
+
+## Money
+
+All budget math uses integer cents in `lib/budget.ts`.
+
+- Flexible plan = income − bills − savings. A percent savings target is basis points of income, rounded to the cent.
+- Fixed daily target = (flexible plan + extra income on or before the selected day) / days in the month.
+- Adaptive daily target = (flexible plan + posted activity before the selected day + today’s extra income) / days left, including today.
+- Amount left today = daily target − today’s net posted spending. Refunds reduce spending. Pending rows are excluded.
+- Month left = flexible plan + posted extra income − posted non-income spending, for the calendar month up to today.
+- System rows from the previous version stay in storage and are excluded, so the plan is not counted twice.
+- `lib/validate.ts` drops unreadable rows and reports them. Corrupt JSON is an error with a way to erase the device data, not an empty new plan.
+
+## Import
+
+`lib/transactionImport.ts` reads up to 500 rows. A bad row rejects the whole paste and names the line. The screen lists every row before anything is saved.
+
+## Storage
+
+AsyncStorage keys are unchanged: `expense_macros_budget_config`, `expense_macros_transactions`, and `expense_macros_appearance`.
+
+## Checks
+
+`make check` runs TypeScript and `tests/*.test.ts` on Node 22.

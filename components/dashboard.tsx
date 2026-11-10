@@ -1,18 +1,24 @@
-import { useState, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
-import {
-  ArrowDownRight, ArrowRight, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight,
-  CircleDollarSign, List, Plus, Wallet,
-} from "lucide-react-native";
-import type { Transaction } from "../types";
-import { budgetFor, dateLabel, isoDate, money, moveDay, moveMonth, weekDates } from "../lib/budget";
-import { Action, Arc, Badge, Contours, IconButton, Txt, useTheme } from "./ui";
+import { useState } from "react";
+import { Pressable, TextInput, View } from "react-native";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react-native";
+import type { Transaction, TransactionCategory } from "../types";
+import { budgetFor, dateLabel, dayEquation, formatCents, monthEquation, moveDay, moveMonth, weekDates } from "../lib/budget";
+import { dollarsToCents } from "../lib/money";
+import { Action, Badge, Banner, IconButton, Meter, Txt, useTheme } from "./ui";
 
 type Budget = ReturnType<typeof budgetFor>;
 const dayName = (date: string) => dateLabel(date, { weekday: "short", month: "short", day: "numeric" });
 const monthName = (date: string) => dateLabel(date, { month: "long", year: "numeric" });
-const percent = (used: number, target: number) => target > 0 ? Math.max(0, Math.round(used / target * 100)) : null;
-const nearingLimit = (used: number, target: number) => target > 0 && used > target * 0.8;
+
+function usedPercent(spent: number, target: number) {
+  if (target > 0) return Math.max(0, Math.round(spent / target * 100));
+  return spent > 0 ? 100 : null;
+}
+
+function signedMoney(cents: number) {
+  if (cents > 0) return `+${formatCents(cents)}`;
+  return formatCents(cents).replace("-", "−");
+}
 
 export function DateStrip({ date, today, entries, onDate }: {
   date: string; today: string; entries: Transaction[]; onDate: (date: string) => void;
@@ -24,231 +30,258 @@ export function DateStrip({ date, today, entries, onDate }: {
   const label = first.slice(0, 7) === last.slice(0, 7)
     ? `${dateLabel(first, { month: "long" })} ${Number(first.slice(-2))}–${Number(last.slice(-2))}`
     : `${dateLabel(first, { month: "short", day: "numeric" })} – ${dateLabel(last, { month: "short", day: "numeric" })}`;
-  return <View style={[s.panel, { paddingHorizontal: 10, paddingBottom: 9 }]}>
-    <View style={[s.between, { minHeight: 49 }]}>
+  return <View style={[s.panel, { paddingHorizontal: 8, paddingBottom: 8 }]}>
+    <View style={[s.between, { minHeight: 48 }]}>
       <IconButton label="Previous week" onPress={() => onDate(moveDay(date, -7))}><ChevronLeft size={18} color={c.muted} /></IconButton>
-      <View style={[s.row, { gap: 6 }]}><CalendarDays size={14} color={c.accent} /><Txt style={s.label}>{label}</Txt></View>
+      <View style={[s.row, { gap: 8 }]}><CalendarDays size={16} color={c.accent} /><Txt style={s.label}>{label}</Txt></View>
       <IconButton label="Next week" onPress={() => onDate(moveDay(date, 7))} disabled={moveDay(last, 1) > today}><ChevronRight size={18} color={c.muted} /></IconButton>
     </View>
-    <View style={{ flexDirection: "row", gap: 3 }}>
+    <View style={{ flexDirection: "row", gap: 4 }}>
       {week.map(day => {
         const selected = day === date;
         const logged = entries.some(tx => tx.date === day && !tx.isSystem);
         return <Pressable key={day} onPress={() => onDate(day)} disabled={day > today} accessibilityRole="button"
-          accessibilityState={{ selected, disabled: day > today }} accessibilityLabel={dayName(day)}
-          style={({ pressed }) => ({ flex: 1, minHeight: 61, gap: 3, justifyContent: "center", alignItems: "center", borderRadius: 13,
-            backgroundColor: selected ? c.primary : day === today ? c.soft : "transparent", opacity: day > today ? 0.48 : pressed ? 0.7 : 1 })}>
-          <Txt style={{ color: selected ? c.onPrimary : c.muted, fontSize: 10, fontWeight: "700" }}>{dateLabel(day, { weekday: "short" })}</Txt>
-          <Txt style={{ color: selected ? c.onPrimary : c.ink, fontSize: 16, fontWeight: "800" }}>{Number(day.slice(-2))}</Txt>
-          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged ? selected ? c.heroGreen : c.accent : "transparent" }} />
+          accessibilityState={{ selected, disabled: day > today }}
+          accessibilityLabel={`${dayName(day)}${day === today ? ", today" : ""}${logged ? ", transaction logged" : ""}`}
+          style={({ pressed }) => ({ flex: 1, minHeight: 56, gap: 2, justifyContent: "center", alignItems: "center", borderRadius: 10,
+            borderCurve: "continuous", backgroundColor: selected ? c.primary : day === today ? c.soft : "transparent",
+            opacity: day > today ? 0.4 : pressed ? 0.75 : 1 })}>
+          <Txt style={{ color: selected ? c.onPrimary : c.muted, fontSize: 12, fontWeight: "600" }}>{dateLabel(day, { weekday: "short" })}</Txt>
+          <Txt style={{ color: selected ? c.onPrimary : c.ink, fontSize: 16, fontWeight: "700" }}>{Number(day.slice(-2))}</Txt>
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged ? (selected ? c.onPrimary : c.accent) : "transparent" }} />
         </Pressable>;
       })}
     </View>
   </View>;
 }
 
-export function Allowance({ left, spent, limit, rollover, compact, isToday = true, wide = false, monthly }: {
-  left: number; spent: number; limit: number; rollover: boolean; compact: boolean; isToday?: boolean;
-  wide?: boolean; monthly?: ReactNode;
+export function Allowance({ data, date, rollover, isToday = true, wide = false, onMonth }: {
+  data: Budget; date: string; rollover: boolean; isToday?: boolean; wide?: boolean; onMonth?: () => void;
 }) {
   const { c, s } = useTheme();
-  const over = left < 0;
-  const progressColor = over ? c.heroError : nearingLimit(spent, limit) ? c.heroWarning : c.heroGreen;
-  const balanceColor = over ? c.heroError : left > 0 ? c.heroGreen : c.onHero;
-  return <View style={{ backgroundColor: c.hero, borderRadius: 26, overflow: "hidden", padding: compact ? 20 : 26,
-    flexDirection: wide ? "row" : "column", gap: wide ? 24 : 17 }}>
-    <View style={{ flex: wide ? 1.45 : undefined, minWidth: 0, gap: 17 }}>
-      <Contours />
-      <View style={s.between}>
-        <View style={[s.row, { gap: 8 }]}><Wallet size={15} color={c.heroGreen} /><Txt style={[s.eyebrow, { color: c.heroMuted }]}>DAILY ALLOWANCE</Txt></View>
-        <View style={{ backgroundColor: c.heroPill, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }}>
-          <Txt style={{ color: c.onHero, fontSize: 10, fontWeight: "700" }}>{rollover ? "Adaptive pace" : "Fixed pace"}</Txt>
+  const over = data.dayLeftCents < 0;
+  const percent = usedPercent(data.daySpentCents, data.dailyCents);
+  const meterColor = over ? c.heroError : percent !== null && percent > 80 ? c.heroWarning : c.heroGreen;
+  const balanceColor = over ? c.heroError : data.dayLeftCents > 0 ? c.heroGreen : c.onHero;
+  const dayLabel = over ? (isToday ? "Over today" : "Over that day") : (isToday ? "Left to spend today" : "Left that day");
+  const monthOver = data.monthLeftCents < 0;
+  const monthPercent = usedPercent(data.monthSpentCents, data.monthBudgetCents);
+  const monthColor = monthOver ? c.heroError : monthPercent !== null && monthPercent > 80 ? c.heroWarning : c.heroGreen;
+  const pendingParts = [
+    data.pendingSpendCents > 0 ? `${formatCents(data.pendingSpendCents)} in pending charges` : "",
+    data.pendingIncomeCents > 0 ? `${formatCents(data.pendingIncomeCents)} in pending income` : "",
+  ].filter(Boolean);
+  const pending = pendingParts.join(" and ");
+  return <View style={{ backgroundColor: c.hero, borderRadius: 16, borderCurve: "continuous", padding: 16, gap: 12 }}>
+    <View style={{ flexDirection: wide && onMonth ? "row" : "column", gap: 16 }}>
+      <View style={{ flex: 1.3, minWidth: 0, gap: 8 }}
+        accessibilityLabel={`${dayLabel}: ${formatCents(Math.abs(data.dayLeftCents))}. ${dayEquation(data)}`}>
+        <View style={s.between}>
+          <Txt style={[s.caption, { color: c.heroMuted }]}>{dayLabel}</Txt>
+          <Txt style={{ color: c.onHero, fontSize: 12, fontWeight: "600" }}>{rollover ? "Adaptive pace" : "Fixed pace"}</Txt>
         </View>
+        <Txt selectable maxFontSizeMultiplier={1.3} style={[s.number, { color: balanceColor, fontSize: 40, lineHeight: 44, letterSpacing: -0.8 }]}>
+          {formatCents(Math.abs(data.dayLeftCents))}
+        </Txt>
+        <Txt style={{ color: c.heroMuted, fontSize: 13, lineHeight: 18 }}>{dayEquation(data)}</Txt>
+        <Meter percent={percent} color={meterColor} track={c.heroLine}
+          label={percent === null ? "No daily target" : `${percent}% of today’s target used`} />
+        <Txt style={{ color: c.heroMuted, fontSize: 12, lineHeight: 16 }}>
+          {rollover ? "Today’s share of what is still left this month." : "The same share of the plan each day."}
+        </Txt>
       </View>
-      <View style={[s.between, { gap: 4 }]}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Txt style={{ color: c.heroMuted, fontSize: 13, fontWeight: "600" }}>{over ? "Over allowance" : isToday ? "Left to spend today" : "Left to spend that day"}</Txt>
-          <Txt lines={1} style={[s.number, { color: balanceColor, fontSize: Math.abs(left) >= 1000 ? (compact ? 30 : 38) : (compact ? 43 : 54), letterSpacing: -2.5, marginTop: 1 }]}>{money(Math.abs(left))}</Txt>
-        </View>
-        <Arc percent={percent(spent, limit)} color={progressColor} size={compact ? 99 : 122} />
-      </View>
-      <View style={{ height: 1, backgroundColor: c.heroLine }} />
-      <View style={[s.row, { gap: 18 }]}>
-        <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>{spent < 0 ? "Net refunded" : "Net spent"}</Txt>
-          <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(Math.abs(spent))}</Txt></View>
-        <View style={{ width: 1, alignSelf: "stretch", backgroundColor: c.heroLine }} />
-        <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>Daily target</Txt>
-          <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(limit)}</Txt></View>
-      </View>
+      {onMonth && <>
+        <View style={{ width: wide ? 1 : undefined, height: wide ? undefined : 1, backgroundColor: c.heroLine }} />
+        <Pressable accessibilityRole="button" accessibilityLabel={`Open ${dateLabel(date, { month: "long" })} in Activity`} onPress={onMonth}
+          style={({ pressed }) => ({ flex: 1, minWidth: 0, justifyContent: "center", gap: 8, opacity: pressed ? 0.75 : 1 })}>
+          <View style={s.between}>
+            <Txt style={[s.caption, { color: c.heroMuted }]}>{monthOver ? `Over in ${dateLabel(date, { month: "long" })}` : `Left in ${dateLabel(date, { month: "long" })}`}</Txt>
+            <Txt selectable style={[s.number, { color: monthOver ? c.heroError : data.monthLeftCents > 0 ? c.heroGreen : c.onHero, fontSize: wide ? 24 : 16 }]}>
+              {formatCents(Math.abs(data.monthLeftCents))}
+            </Txt>
+          </View>
+          <Meter percent={monthPercent} color={monthColor} track={c.heroLine}
+            label={monthPercent === null ? "No monthly allowance" : `${monthPercent}% of this month’s budget used`} />
+          {wide && <Txt style={{ color: c.heroMuted, fontSize: 12, lineHeight: 16 }}>{monthEquation(data)}</Txt>}
+        </Pressable>
+      </>}
     </View>
-    {monthly && <>
-      <View style={{ width: wide ? 1 : undefined, height: wide ? undefined : 1, backgroundColor: c.heroLine }} />
-      <View style={{ flex: wide ? 1 : undefined, minWidth: 0, justifyContent: "center" }}>{monthly}</View>
-    </>}
+    {!!pending && <Txt style={{ color: c.heroMuted, fontSize: 13, lineHeight: 18 }}>
+      {pending} {pendingParts.length > 1 ? "are" : "is"} not included.
+    </Txt>}
   </View>;
-}
-
-function MonthCard({ data, date, onPress, embedded = false }: {
-  data: Budget; date: string; onPress?: () => void; embedded?: boolean;
-}) {
-  const { c, s } = useTheme();
-  const used = percent(data.monthSpent, data.monthBudget);
-  const over = data.monthLeft < 0;
-  const green = embedded ? c.heroGreen : c.green;
-  const error = embedded ? c.heroError : c.error;
-  const warning = embedded ? c.heroWarning : c.warning;
-  const muted = { color: embedded ? c.heroMuted : c.muted, fontSize: 11 };
-  const progressColor = over ? error : nearingLimit(data.monthSpent, data.monthBudget) ? warning : green;
-  const balanceColor = over ? error : data.monthLeft > 0 ? green : embedded ? c.onHero : c.ink;
-  const bar = Math.min(100, used ?? (over ? 100 : 0));
-  const label = `${dateLabel(date, { month: "long" })} budget`;
-  const content = <>
-    <View style={[s.between, { gap: 8 }]}>
-      {embedded ? <View style={[s.row, { gap: 8 }]}>
-        <ChartNoAxesColumnIncreasing color={green} size={15} />
-        <Txt style={[s.eyebrow, { color: c.heroMuted }]}>{label.toUpperCase()}</Txt>
-      </View> : <View style={[s.row, { gap: 10 }]}>
-        <View style={{ backgroundColor: c.soft, borderRadius: 11, width: 35, height: 35, justifyContent: "center", alignItems: "center" }}><ChartNoAxesColumnIncreasing color={c.accent} size={18} /></View>
-        <View style={{ gap: 1 }}><Txt style={s.label}>{label}</Txt><Txt style={muted}>Flexible spending</Txt></View>
-      </View>}
-      {onPress && <ArrowRight size={17} color={embedded ? green : c.accent} />}
-    </View>
-    <View style={[s.between, { alignItems: "flex-end", gap: 8 }]}>
-      <View style={{ flexShrink: 1 }}>
-        <Txt style={[s.number, { fontSize: 25, letterSpacing: -0.7, color: balanceColor }]}>{money(Math.abs(data.monthLeft))}</Txt>
-        <Txt style={[muted, { marginTop: 2 }]}>{over ? "over budget" : "remaining this month"}</Txt>
-      </View>
-      <Txt style={muted}>{used === null ? "No allowance" : `${used}% used`}</Txt>
-    </View>
-    <View style={{ height: 7, backgroundColor: embedded ? c.heroLine : c.track, borderRadius: 8, overflow: "hidden" }}>
-      <View style={{ height: 7, width: `${bar}%`, backgroundColor: progressColor, borderRadius: 8 }} />
-    </View>
-    <View style={[s.between, { gap: 8, flexWrap: "wrap" }]}><Txt style={muted}>Net spent {money(data.monthSpent)}</Txt><Txt style={muted}>Budget {money(data.monthBudget)}</Txt></View>
-  </>;
-  const style = embedded ? { gap: 10 } : [s.panel, { padding: 17, gap: 13 }];
-  return onPress ? <Pressable accessibilityRole="button" accessibilityLabel="Open monthly activity" onPress={onPress} style={({ pressed }) => [style, { opacity: pressed ? 0.74 : 1 }]}>{content}</Pressable>
-    : <View style={style}>{content}</View>;
 }
 
 export function Entries({ items, emptyTitle, emptyText, add, edit, showDate = false }: {
   items: Transaction[]; emptyTitle: string; emptyText: string; add?: () => void; edit: (tx: Transaction) => void; showDate?: boolean;
 }) {
   const { c, s } = useTheme();
-  if (!items.length) return <View style={[s.panel, { padding: 21, alignItems: "center", gap: 7 }]}>
-    <View style={{ padding: 10, borderRadius: 13, backgroundColor: c.soft }}><List size={20} color={c.accent} /></View>
-    <Txt style={s.label}>{emptyTitle}</Txt><Txt style={[s.muted, { textAlign: "center" }]}>{emptyText}</Txt>
-    {add && <Action tone="soft" onPress={add} style={{ marginTop: 4 }}>Log a transaction</Action>}
+  if (!items.length) return <View style={[s.panel, { padding: 20, alignItems: "center", gap: 8 }]}>
+    <Txt style={s.label}>{emptyTitle}</Txt>
+    <Txt style={[s.muted, { textAlign: "center" }]}>{emptyText}</Txt>
+    {add && <Action tone="soft" onPress={add} style={{ marginTop: 4 }}>Log transaction</Action>}
   </View>;
-  return <View style={[s.panel, { paddingHorizontal: 13 }]}>
-    {items.map((tx, i) => <Pressable key={tx.id} onPress={() => edit(tx)} accessibilityRole="button"
-      accessibilityLabel={`Edit ${tx.note || tx.category}, ${money(tx.amount)}`}
-      style={({ pressed }) => [s.row, { gap: 10, minHeight: 65, paddingVertical: 8, opacity: pressed ? 0.63 : 1,
-        borderBottomWidth: i === items.length - 1 ? 0 : 1, borderBottomColor: c.border }]}>
-      <Badge category={tx.category} />
-      <View style={{ flex: 1, gap: 3 }}>
-        <Txt lines={1} style={s.label}>{tx.note?.trim() || (tx.category === "Income" ? "Extra income" : tx.category)}</Txt>
-        <Txt lines={1} style={{ color: c.muted, fontSize: 11 }}>
-          {tx.category}{tx.amount > 0 && tx.category !== "Income" ? " · Refund" : ""}{showDate ? ` · ${dayName(tx.date)}` : ""}{tx.pending ? " · Pending" : ""}
-        </Txt>
-        {!!tx.account && <Txt lines={1} style={{ color: c.muted, fontSize: 11 }}>{tx.account}</Txt>}
-      </View>
-      <Txt style={[s.number, { color: tx.amount > 0 ? c.green : c.ink, fontSize: 14 }]}>{tx.amount > 0 ? "+" : "−"}{money(Math.abs(tx.amount))}</Txt>
-      <ChevronRight size={15} color={c.faint} />
-    </Pressable>)}
+  return <View style={[s.panel, { paddingHorizontal: 12 }]}>
+    {items.map((tx, index) => {
+      const cents = dollarsToCents(tx.amount) ?? 0;
+      const title = tx.note?.trim() || (tx.category === "Income" ? "Extra income" : tx.category);
+      return <Pressable key={tx.id} onPress={() => edit(tx)} accessibilityRole="button"
+        accessibilityLabel={`Edit ${title}, ${formatCents(cents)}${tx.pending ? ", pending" : ""}`}
+        style={({ pressed }) => [s.row, { gap: 12, minHeight: 64, paddingVertical: 8, opacity: pressed ? 0.7 : 1,
+          borderBottomWidth: index === items.length - 1 ? 0 : 1, borderBottomColor: c.border }]}>
+        <Badge category={tx.category} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt lines={1} style={s.label}>{title}</Txt>
+          <Txt lines={1} style={{ color: c.muted, fontSize: 13 }}>
+            {tx.category}{cents > 0 && tx.category !== "Income" ? " · Refund" : ""}{showDate ? ` · ${dayName(tx.date)}` : ""}{tx.pending ? " · Pending" : ""}
+          </Txt>
+          {!!tx.account && <Txt lines={1} style={{ color: c.muted, fontSize: 13 }}>{tx.account}</Txt>}
+        </View>
+        <Txt style={[s.number, { color: cents > 0 ? c.green : c.ink, fontSize: 15 }]}>{signedMoney(cents)}</Txt>
+        <ChevronRight size={16} color={c.faint} />
+      </Pressable>;
+    })}
   </View>;
 }
 
-function Breakdown({ data }: { data: Budget }) {
+function Breakdown({ data, selected, onSelect }: {
+  data: Budget; selected: TransactionCategory | null; onSelect: (category: TransactionCategory) => void;
+}) {
   const { c, s, cat } = useTheme();
-  const categories = data.categories.filter(row => row.amount !== 0).sort((a, b) => b.amount - a.amount);
-  const total = categories.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
-  return <View style={[s.panel, { padding: 17, gap: 15 }]}>
-    <View style={[s.row, { gap: 8 }]}><ArrowDownRight color={c.accent} size={19} /><Txt style={s.label}>Where it went</Txt></View>
-    {categories.length === 0 ? <Txt style={s.muted}>Category totals appear when you log spending.</Txt> : <>
-      {total > 0 && <View style={{ flexDirection: "row", gap: 3, borderRadius: 8, overflow: "hidden", height: 9 }}>
-        {categories.filter(row => row.amount > 0).map(row => <View key={row.category} style={{ flex: row.amount / total, backgroundColor: cat[row.category].bar }} />)}
+  const categories = data.categories.filter(row => row.cents !== 0).sort((a, b) => b.cents - a.cents);
+  const total = categories.reduce((sum, row) => sum + Math.max(0, row.cents), 0);
+  return <View style={[s.panel, { padding: 16, gap: 12 }]}>
+    <Txt style={s.label}>Where it went</Txt>
+    {categories.length === 0 ? <Txt style={s.muted}>Category totals show up after you log a posted expense.</Txt> : <>
+      {total > 0 && <View accessibilityLabel="Spending by category" style={{ flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden", gap: 2 }}>
+        {categories.filter(row => row.cents > 0).map(row => <View key={row.category} style={{ flex: row.cents / total, backgroundColor: cat[row.category].bar }} />)}
       </View>}
-      {categories.map(row => <View key={row.category} style={[s.between, { gap: 8 }]}>
-        <View style={[s.row, { gap: 8 }]}><Badge category={row.category} size={30} /><Txt style={s.label}>{row.category}</Txt></View>
-        <Txt style={[s.number, { color: row.amount < 0 ? c.green : c.ink }]}>{row.amount < 0 ? "+" : ""}{money(Math.abs(row.amount))}</Txt>
-      </View>)}
+      {categories.map(row => {
+        const active = selected === row.category;
+        return <Pressable key={row.category} accessibilityRole="button" accessibilityState={{ selected: active }}
+          accessibilityLabel={`${active ? "Stop filtering" : "Filter"} by ${row.category}, ${formatCents(Math.abs(row.cents))}`}
+          onPress={() => onSelect(row.category)}
+          style={({ pressed }) => [s.between, { gap: 8, minHeight: 44, borderRadius: 10, paddingHorizontal: 4, opacity: pressed ? 0.7 : 1, backgroundColor: active ? c.soft : "transparent" }]}>
+          <View style={[s.row, { gap: 8 }]}><Badge category={row.category} size={32} /><Txt style={s.label}>{row.category}</Txt></View>
+          <Txt style={[s.number, { color: row.cents < 0 ? c.green : c.ink }]}>{row.cents < 0 ? `+${formatCents(-row.cents)}` : formatCents(row.cents)}</Txt>
+        </Pressable>;
+      })}
     </>}
   </View>;
 }
 
-export function Today({ data, transactions, date, today, compact, wide, rollover, onDate, add, edit, activity }: {
-  data: Budget; transactions: Transaction[]; date: string; today: string; compact: boolean; wide: boolean; rollover: boolean;
+export function Today({ data, transactions, date, today, wide, rollover, onDate, add, edit, activity }: {
+  data: Budget; transactions: Transaction[]; date: string; today: string; wide: boolean; rollover: boolean;
   onDate: (date: string) => void; add: () => void; edit: (tx: Transaction) => void; activity: () => void;
 }) {
   const { c, s } = useTheme();
   const isToday = date === today;
   return <>
-    <View style={[s.between, { gap: 10 }]}>
-      <View style={{ flexShrink: 1, gap: 4 }}>
-        <Txt style={s.eyebrow}>{dateLabel(date, { weekday: "long", month: "long", day: "numeric" }).toUpperCase()}</Txt>
-        <Txt style={{ fontSize: compact ? 34 : 41, letterSpacing: -1.7, fontWeight: "800" }}>{isToday ? "Today" : dateLabel(date, { month: "long", day: "numeric" })}</Txt>
+    <View style={[s.between, { gap: 12, alignItems: "flex-end" }]}>
+      <View style={{ flexShrink: 1, gap: 2 }}>
+        <Txt style={s.caption}>{dateLabel(date, { weekday: "long", month: "long", day: "numeric" })}</Txt>
+        <Txt accessibilityRole="header" style={s.title}>{isToday ? "Today" : dateLabel(date, { month: "long", day: "numeric" })}</Txt>
       </View>
       {!isToday && <Action tone="soft" onPress={() => onDate(today)}>Back to today</Action>}
     </View>
     <DateStrip date={date} today={today} entries={transactions} onDate={value => onDate(value > today ? today : value)} />
-    <Allowance left={data.dayLeft} spent={data.daySpent} limit={data.daily} rollover={rollover} compact={compact} isToday={isToday} wide={wide}
-      monthly={<MonthCard data={data} date={date} onPress={activity} embedded />} />
-    <View style={{ gap: 7 }}>
+    {data.plan.flex < 0 && <Banner tone="warning" title="The plan is short">
+      Bills and savings are {formatCents(-data.plan.flex)} more than income, so the daily target stays negative until the plan changes.
+    </Banner>}
+    {data.hiddenFuture > 0 && <Banner>
+      {data.hiddenFuture === 1 ? "1 transaction dated after today is hidden." : `${data.hiddenFuture} transactions dated after today are hidden.`}
+    </Banner>}
+    <Allowance data={data} date={date} rollover={rollover} isToday={isToday} wide={wide} onMonth={activity} />
+    <View style={{ gap: 8 }}>
       <View style={s.between}>
-        <Txt style={s.title}>{isToday ? "Today’s log" : "Daily log"}</Txt>
-        <IconButton label="Add transaction for selected day" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.accent} /></IconButton>
+        <Txt accessibilityRole="header" style={[s.label, { fontSize: 17 }]}>{isToday ? "Today’s log" : "That day’s log"}</Txt>
+        <IconButton label="Log transaction" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={18} color={c.accent} /></IconButton>
       </View>
-      <Entries items={data.entries.filter(tx => tx.date === date)} emptyTitle="Nothing logged yet" emptyText="Log a purchase, refund, or extra income to start." add={add} edit={edit} />
+      <Entries items={data.entries.filter(tx => tx.date === date)} emptyTitle="Nothing logged for this day"
+        emptyText="Add a purchase, a refund, or extra income." add={add} edit={edit} />
     </View>
   </>;
 }
 
 const filters = ["All", "Expenses", "Refunds", "Income", "Pending"] as const;
-export function Activity({ data, date, wide, onDate, edit, add, openImport }: {
-  data: Budget; date: string; wide: boolean; onDate: (value: string) => void; edit: (tx: Transaction) => void; add: () => void; openImport: () => void;
+
+export function Activity({ data, date, today, wide, onDate, edit, add, openImport }: {
+  data: Budget; date: string; today: string; wide: boolean; onDate: (value: string) => void;
+  edit: (tx: Transaction) => void; add: () => void; openImport: () => void;
 }) {
-  const { c, s } = useTheme();
+  const { c, s, scheme } = useTheme();
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
+  const [category, setCategory] = useState<TransactionCategory | null>(null);
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
   const sorted = data.entries.filter(tx => {
-    if (filter === "All") return true;
-    if (filter === "Pending") return !!tx.pending;
-    if (tx.pending) return false;
-    if (filter === "Income") return tx.category === "Income";
-    if (filter === "Refunds") return tx.category !== "Income" && tx.amount > 0;
-    return tx.amount < 0;
-  })
-    .sort((a, b) => b.date.localeCompare(a.date));
+    if (category && tx.category !== category) return false;
+    if (filter === "Pending" && !tx.pending) return false;
+    if (filter !== "All" && filter !== "Pending") {
+      if (tx.pending) return false;
+      if (filter === "Income" && tx.category !== "Income") return false;
+      if (filter === "Refunds" && (tx.category === "Income" || tx.amount <= 0)) return false;
+      if (filter === "Expenses" && tx.amount >= 0) return false;
+    }
+    if (!needle) return true;
+    const cents = Math.abs(dollarsToCents(tx.amount) ?? 0);
+    const hay = `${tx.note ?? ""} ${tx.category} ${tx.account ?? ""} ${(cents / 100).toFixed(2)} ${formatCents(cents)}`.toLowerCase();
+    return hay.includes(needle);
+  }).sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+  const monthOver = data.monthLeftCents < 0;
+  const monthPercent = usedPercent(data.monthSpentCents, data.monthBudgetCents);
+  const narrowed = !!needle || !!category || filter !== "All";
   return <>
-    <View style={{ gap: 4 }}><Txt style={s.eyebrow}>THE BIG PICTURE</Txt><Txt style={{ fontSize: 36, fontWeight: "800", letterSpacing: -1.5 }}>Activity</Txt>
-      <Txt style={s.muted}>See where your money went this month.</Txt></View>
-    <View style={[s.panel, s.between, { paddingHorizontal: 9 }]}>
-      <IconButton label="Previous month" onPress={() => onDate(moveMonth(date, -1))}><ChevronLeft size={19} color={c.muted} /></IconButton>
-      <Txt style={s.label}>{monthName(date)}</Txt>
-      <IconButton label="Next month" onPress={() => onDate(moveMonth(date, 1))} disabled={date.slice(0, 7) >= isoDate().slice(0, 7)}><ChevronRight size={19} color={c.muted} /></IconButton>
+    <View style={{ gap: 4 }}>
+      <Txt accessibilityRole="header" style={s.title}>Activity</Txt>
+      <Txt style={s.muted}>Posted totals for the month. Pending charges stay out until you mark them posted.</Txt>
     </View>
-    <View style={{ flexDirection: wide ? "row" : "column", gap: 13, alignItems: wide ? "flex-start" : "stretch" }}>
-      <View style={{ flex: wide ? 1 : undefined, gap: 13, minWidth: 0 }}>
-        <MonthCard data={data} date={date} />
-        <Breakdown data={data} />
+    <View style={[s.panel, s.between, { paddingHorizontal: 8 }]}>
+      <IconButton label="Previous month" onPress={() => onDate(moveMonth(date, -1))}><ChevronLeft size={18} color={c.muted} /></IconButton>
+      <Txt style={s.label}>{monthName(date)}</Txt>
+      <IconButton label="Next month" onPress={() => {
+        const next = moveMonth(date, 1);
+        onDate(next > today ? today : next);
+      }} disabled={date.slice(0, 7) >= today.slice(0, 7)}><ChevronRight size={18} color={c.muted} /></IconButton>
+    </View>
+    <View style={{ flexDirection: wide ? "row" : "column", gap: 16, alignItems: wide ? "flex-start" : "stretch" }}>
+      <View style={{ flex: wide ? 1 : undefined, gap: 12, minWidth: 0 }}>
+        <View style={[s.panel, { padding: 16, gap: 8 }]}>
+          <Txt style={s.caption}>{monthOver ? "Over this month" : "Left this month"}</Txt>
+          <Txt selectable style={[s.number, { fontSize: 32, letterSpacing: -0.6, color: monthOver ? c.error : data.monthLeftCents > 0 ? c.green : c.ink }]}>
+            {formatCents(Math.abs(data.monthLeftCents))}
+          </Txt>
+          <Meter percent={monthPercent} color={monthOver ? c.error : c.accent} track={c.track}
+            label={monthPercent === null ? "No monthly allowance" : `${monthPercent}% of this month’s budget used`} />
+          <Txt style={[s.muted, { fontSize: 13, lineHeight: 18 }]}>{monthEquation(data)}</Txt>
+        </View>
+        <Breakdown data={data} selected={category} onSelect={value => { setCategory(current => current === value ? null : value); setFilter("All"); }} />
       </View>
-      <View style={{ flex: wide ? 1.45 : undefined, minWidth: 0, gap: 10 }}>
+      <View style={{ flex: wide ? 1.2 : undefined, minWidth: 0, gap: 12 }}>
         <View style={s.between}>
-          <Txt style={s.title}>Transactions</Txt>
-          <View style={[s.row, { gap: 6 }]}>
+          <Txt accessibilityRole="header" style={[s.label, { fontSize: 17 }]}>Transactions</Txt>
+          <View style={[s.row, { gap: 8 }]}>
             <Action onPress={openImport} tone="soft">Import</Action>
-            <IconButton label="Add transaction for selected month" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.accent} /></IconButton>
+            <IconButton label="Log transaction" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={18} color={c.accent} /></IconButton>
           </View>
         </View>
-        <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
+        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           {filters.map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: item === filter }} key={item}
-            onPress={() => setFilter(item)} style={{ backgroundColor: item === filter ? c.soft : c.surface, minHeight: 44, justifyContent: "center",
-              borderColor: item === filter ? c.soft : c.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10 }}>
-            <Txt style={{ color: item === filter ? c.accent : c.muted, fontSize: 12, fontWeight: "700" }}>{item}</Txt>
+            onPress={() => { setFilter(item); setCategory(null); }} style={{ backgroundColor: item === filter ? c.soft : c.surface, minHeight: 44, justifyContent: "center",
+              borderColor: item === filter ? c.accent : c.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12 }}>
+            <Txt style={{ color: item === filter ? c.accent : c.muted, fontSize: 13, fontWeight: "600" }}>{item}</Txt>
           </Pressable>)}
         </View>
-        <Entries items={sorted} emptyTitle={filter === "All" ? "No transactions this month" : `No ${filter.toLowerCase()} this month`}
-          emptyText={filter === "All" ? "Add an entry to start your monthly log." : "Switch filters to see your other entries."}
-          add={filter === "All" ? add : undefined} edit={edit} showDate />
+        <View style={{ gap: 8 }}>
+          <Txt style={s.label}>Search</Txt>
+          <TextInput accessibilityLabel="Search" value={query} onChangeText={setQuery} keyboardAppearance={scheme}
+            placeholder="Notes, categories, or amounts" placeholderTextColor={c.faint} style={s.field} />
+        </View>
+        {!!category && <Txt style={s.caption}>Showing {category}. Tap the category again to clear it.</Txt>}
+        <Entries items={sorted}
+          emptyTitle={narrowed ? "Nothing matches" : "No transactions this month"}
+          emptyText={narrowed ? "Try another filter or clear the search." : "Log a transaction or import a few rows."}
+          add={narrowed ? undefined : add} edit={edit} showDate />
       </View>
     </View>
   </>;
