@@ -2,31 +2,32 @@
   "expo": {
     "name": "Expense Macros",
     "slug": "expense-macros",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "scheme": "expense-macros",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#121212"
+      "backgroundColor": "#f7f7fb"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kevenhypn.expensemacros",
-      "buildNumber": "1"
+      "buildNumber": "2"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#121212",
+        "backgroundColor": "#5740dc",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
       "package": "com.kevenhypn.expensemacros",
-      "versionCode": 1
+      "versionCode": 2
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./public/icons/app-192.png"
     },
     "plugins": [
       "expo-router",
