@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { ArrowRight, CalendarDays, FlaskConical, List, LockKeyhole, Plus, SlidersHorizontal, X } from "lucide-react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Activity, Allowance, Today } from "../components/dashboard";
+import { GlassTabBar } from "../components/GlassTabBar";
 import { TransactionImport } from "../components/TransactionImport";
 import { PlanForm, PlanSummary, TransactionForm } from "../components/forms";
 import { Action, Brand, IconButton, ThemeToggle, Txt, useTheme } from "../components/ui";
@@ -10,6 +11,8 @@ import { budgetFor, isoDate } from "../lib/budget";
 import { sampleData } from "../lib/demo";
 import { loadData, saveConfig, saveTransactions } from "../lib/storage";
 import type { BudgetConfig, Transaction } from "../types";
+
+const glassTabBarHeight = 62;
 
 const tabs = [
   { name: "Today", icon: CalendarDays },
@@ -195,6 +198,10 @@ export default function ExpenseMacros() {
   const loggingSelectedDate = screen === "Today" || (screen === "Activity" && date.slice(0, 7) !== today.slice(0, 7));
   const logEntry = () => openEntry(undefined, loggingSelectedDate);
   const showTabs = !!config && !editingPlan && !importing;
+  const showGlassTabs = Platform.OS === "web" && !desktop && showTabs;
+  const glassBottom = Math.max(20, insets.bottom - 14);
+  const glassClearance = glassBottom + glassTabBarHeight;
+  const bottomPadding = showGlassTabs ? glassClearance + 12 : 20 + (!showTabs || desktop ? insets.bottom : 0);
   const metrics = config ? budgetFor(config, transactions, date) : null;
 
   return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]}>
@@ -225,7 +232,7 @@ export default function ExpenseMacros() {
           </View>
         </View>}
         <ScrollView ref={scroller} keyboardShouldPersistTaps="handled" contentContainerStyle={{
-          flexGrow: 1, paddingTop: compact ? 17 : 25, paddingHorizontal: compact ? 16 : 27, paddingBottom: 20 + (!showTabs || desktop ? insets.bottom : 0),
+          flexGrow: 1, paddingTop: compact ? 17 : 25, paddingHorizontal: compact ? 16 : 27, paddingBottom: bottomPadding,
         }}>
           <View style={{ width: "100%", maxWidth: editingPlan ? 560 : !config ? 625 : screen === "Plan" ? 650 : 950, alignSelf: "center", gap: 13 }}>
             {!stored && (loadError ? <View style={[s.panel, { padding: 20, gap: 12 }]}>
@@ -252,12 +259,13 @@ export default function ExpenseMacros() {
         </ScrollView>
         {!!notice && !form && !editingPlan && !importing && <View accessibilityLiveRegion="polite" style={[s.between, {
           alignSelf: "center", marginHorizontal: 15, marginBottom: 7, backgroundColor: c.hero, paddingLeft: 14, borderRadius: 13, gap: 9, minHeight: 43,
-        }]}>
+        }, showGlassTabs && { position: "absolute", bottom: glassClearance + 4, zIndex: 2 }]}>
           <Txt style={{ color: c.onHero, fontWeight: "600", fontSize: 13 }}>{notice.message}</Txt>
           {notice.deleted && <Action tone="soft" onPress={undoDelete} disabled={busy} style={{ minHeight: 36 }}>Undo</Action>}
           <IconButton label="Dismiss message" onPress={() => setNotice(null)} disabled={busy}><X size={16} color={c.onHero} /></IconButton>
         </View>}
-        {!desktop && showTabs && <View accessibilityRole="tablist" style={{
+        {showGlassTabs && <GlassTabBar tabs={tabs} active={screen} bottom={glassBottom} height={glassTabBarHeight} onSelect={jump} />}
+        {!desktop && showTabs && !showGlassTabs && <View accessibilityRole="tablist" style={{
           flexDirection: "row", gap: 7, backgroundColor: c.surface, borderTopWidth: 1, borderColor: c.border,
           paddingTop: 6, paddingHorizontal: 13, paddingBottom: Math.max(insets.bottom, 7),
         }}>
