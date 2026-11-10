@@ -1,1281 +1,279 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ScrollView,
-  RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-  Modal,
-  Vibration,
-} from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, useRouter } from "expo-router";
-import Animated, { FadeInDown } from "react-native-reanimated";
-import {
-  Settings,
-  RefreshCw,
-  Trash2,
-  Pencil,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react-native";
-import { Transaction, TransactionCategory } from "../types";
-import {
-  saveTransactions,
-  generateId,
-  getTodayISO,
-  calculateFinancials,
-  daysInMonth,
-  isSameMonth,
-} from "../lib/storage";
-import { useAppData } from "../hooks/useAppData";
-import { SummaryCard } from "../components/SummaryCard";
-import { AmountToggle } from "../components/AmountToggle";
-import { CategoryGrid } from "../components/CategoryGrid";
-import { CATEGORY_STYLES, CATEGORY_TEXT_COLORS } from "../lib/categoryStyles";
-import { formatMoney0 } from "../src/utils/money";
-
-type FilterType = "All" | "Spending" | "Bills" | "Savings" | "Income";
-
-export default function Dashboard() {
-  const router = useRouter();
-  const { config, transactions, setTransactions, isLoading, refresh } =
-    useAppData();
-
-  // UI State
-  const [amount, setAmount] = useState("");
-  const [isIncome, setIsIncome] = useState(false);
-  const [selectedCat, setSelectedCat] = useState<TransactionCategory>("Food");
-  const [note, setNote] = useState("");
-  const [filter] = useState<FilterType>("All");
-  const [refreshing, setRefreshing] = useState(false);
-  const [expandedCard, setExpandedCard] = useState<"period" | "today" | null>(
-    null
-  );
-  const [showAddCard, setShowAddCard] = useState(false);
-  const [viewMode, setViewMode] = useState<"day" | "period">("day");
-  const [selectedDateISO, setSelectedDateISO] = useState(getTodayISO());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDate, setEditDate] = useState("");
-  const [editAmount, setEditAmount] = useState("");
-  const [editNote, setEditNote] = useState("");
-  const [editCategory, setEditCategory] =
-    useState<TransactionCategory>("Food");
-  const [pendingDelete, setPendingDelete] = useState<{
-    tx: Transaction;
-    previousTxs: Transaction[];
-    nextTxs: Transaction[];
-  } | null>(null);
-  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const spendingCategories = [
-    "Food",
-    "Shopping",
-    "Transport",
-    "Entertainment",
-    "Other",
-  ] as const;
-  type SpendingCategory = (typeof spendingCategories)[number];
-  const expenseCategories = [
-    "Bills",
-    "Savings",
-    "Food",
-    "Shopping",
-    "Transport",
-    "Entertainment",
-    "Other",
-  ] as const;
-  type ExpenseCategory = (typeof expenseCategories)[number];
-  const reimbursementCategories: TransactionCategory[] = [
-    ...spendingCategories,
-  ];
-  const isSpendingCategory = (
-    category: TransactionCategory
-  ): category is SpendingCategory =>
-    !["Bills", "Savings", "Income"].includes(category);
-
-  // Redirect to setup if no config
-  useEffect(() => {
-    if (!isLoading && !config) {
-      router.replace("/setup");
-    }
-  }, [isLoading, config, router]);
-
-  useEffect(() => {
-    if (!isIncome) return;
-    if (!isSpendingCategory(selectedCat)) {
-      setSelectedCat("Other");
-    }
-  }, [isIncome, selectedCat]);
-
-  useEffect(() => {
-    return () => {
-      if (deleteTimerRef.current) {
-        clearTimeout(deleteTimerRef.current);
-        deleteTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
-  }, [refresh]);
-
-  if (isLoading) {
-    return (
-      <SafeAreaView className="flex-1 bg-background items-center justify-center">
-        <ActivityIndicator size="large" color="#ffffff" />
-      </SafeAreaView>
-    );
-  }
-
-  if (!config) return null;
-
-  // --- Calculations ---
-  const selectedDate = new Date(`${selectedDateISO}T00:00:00`);
-  const selectedDateLabel = selectedDate.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-  const rolloverUnspent = config.rolloverUnspent ?? false;
-  const { availableToSpend: baseAvailableToSpend } = calculateFinancials(config);
-
-  // Filter for current month
-  const currentMonthTxs = transactions.filter((t) =>
-    isSameMonth(t.date, selectedDateISO)
-  );
-
-  // Discretionary calculation
-  const netDiscretionary = currentMonthTxs.reduce((sum, t) => {
-    if (!isSpendingCategory(t.category)) return sum;
-    return sum + t.amount;
-  }, 0);
-  const discretionarySpent = Math.max(0, -netDiscretionary);
-  const totalIncome = currentMonthTxs.reduce((sum, t) => {
-    if (t.category !== "Income") return sum;
-    if (t.amount <= 0) return sum;
-    return sum + t.amount;
-  }, 0);
-
-  const incomeAdjustments = currentMonthTxs.reduce((sum, t) => {
-    if (t.isSystem) return sum;
-    if (t.category !== "Income") return sum;
-    if (t.amount <= 0) return sum;
-    return sum + t.amount;
-  }, 0);
-
-  const availableToSpend = baseAvailableToSpend + incomeAdjustments;
-  const periodLeft = availableToSpend + netDiscretionary;
-  const monthLeft = periodLeft;
-  const monthBudgetTotal = availableToSpend;
-  const pctOfIncome = (amount: number) =>
-    totalIncome > 0 ? (amount / totalIncome) * 100 : 0;
-
-  // Today's Budget Logic
-  const dim = daysInMonth(selectedDateISO);
-  const baseDailyBudget = availableToSpend / dim;
-  const monthPrefix = selectedDateISO.slice(0, 7);
-  const selectedDay = selectedDate.getDate();
-  const selectedDayTxs = currentMonthTxs.filter(
-    (t) => t.date === selectedDateISO
-  );
-  const netSpendingByDate = currentMonthTxs.reduce(
-    (acc, t) => {
-      if (!isSpendingCategory(t.category)) return acc;
-      acc[t.date] = (acc[t.date] ?? 0) + t.amount;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
-
-  let dailyBudget = baseDailyBudget;
-  let overspentDays = 0;
-
-  if (rolloverUnspent) {
-    let remainingBudget = availableToSpend;
-    for (let day = 1; day <= dim; day += 1) {
-      const remainingDays = dim - day + 1;
-      const dayBudget = remainingBudget / remainingDays;
-      const dateISO = `${monthPrefix}-${String(day).padStart(2, "0")}`;
-      const spent = -(netSpendingByDate[dateISO] ?? 0);
-      if (spent > dayBudget) overspentDays += 1;
-      if (day === selectedDay) dailyBudget = dayBudget;
-      remainingBudget -= spent;
-    }
-  } else {
-    for (let day = 1; day <= dim; day += 1) {
-      const dateISO = `${monthPrefix}-${String(day).padStart(2, "0")}`;
-      const spent = -(netSpendingByDate[dateISO] ?? 0);
-      if (spent > baseDailyBudget) overspentDays += 1;
-    }
-  }
-
-  const todayTxs = selectedDayTxs;
-  const todayNet = todayTxs.reduce((sum, t) => {
-    if (!isSpendingCategory(t.category)) return sum;
-    return sum + t.amount;
-  }, 0);
-  const todaySpent = -todayNet;
-  const todayReimbursed = todayTxs.reduce((sum, t) => {
-    if (!isSpendingCategory(t.category)) return sum;
-    if (t.amount <= 0) return sum;
-    return sum + t.amount;
-  }, 0);
-
-  const todayLeft = dailyBudget - todaySpent;
-  const safeToSpendToday = dailyBudget;
-  const remainingToday = todayLeft;
-  const daysLeftInMonth = dim - selectedDay + 1;
-  const nextResetDate = new Date(
-    selectedDate.getFullYear(),
-    selectedDate.getMonth() + 1,
-    1
-  );
-  const nextResetLabel = `Resets ${nextResetDate.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  })}`;
-
-  const buildSpendingTotals = (txs: Transaction[]) => {
-    const netTotals: Record<SpendingCategory, number> = {
-      Food: 0,
-      Shopping: 0,
-      Transport: 0,
-      Entertainment: 0,
-      Other: 0,
-    };
-
-    txs.forEach((t) => {
-      if (!spendingCategories.includes(t.category as SpendingCategory)) return;
-      netTotals[t.category as SpendingCategory] += t.amount;
-    });
-
-    const totals = spendingCategories.reduce((acc, cat) => {
-      acc[cat] = Math.max(0, -netTotals[cat]);
-      return acc;
-    }, {} as Record<SpendingCategory, number>);
-
-    const totalSpent = Object.values(totals).reduce((sum, val) => sum + val, 0);
-    return { totals, totalSpent };
-  };
-
-  const buildExpenseTotals = (txs: Transaction[]) => {
-    const netTotals: Record<ExpenseCategory, number> = {
-      Bills: 0,
-      Savings: 0,
-      Food: 0,
-      Shopping: 0,
-      Transport: 0,
-      Entertainment: 0,
-      Other: 0,
-    };
-
-    txs.forEach((t) => {
-      if (!expenseCategories.includes(t.category as ExpenseCategory)) return;
-      netTotals[t.category as ExpenseCategory] += t.amount;
-    });
-
-    const totals = expenseCategories.reduce((acc, cat) => {
-      acc[cat] = Math.max(0, -netTotals[cat]);
-      return acc;
-    }, {} as Record<ExpenseCategory, number>);
-
-    const totalSpent = Object.values(totals).reduce((sum, val) => sum + val, 0);
-    return { totals, totalSpent };
-  };
-
-  const periodSpending = buildSpendingTotals(currentMonthTxs);
-  const todaySpending = buildSpendingTotals(todayTxs);
-  const fullExpenses = buildExpenseTotals(currentMonthTxs);
-
-  const periodLogTxs = [...currentMonthTxs].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-  const todaySpendingTxs = todayTxs.filter((t) =>
-    spendingCategories.includes(t.category as SpendingCategory)
-  );
-
-  // --- Handlers ---
-
-  const handleAddTransaction = async () => {
-    const val = parseFloat(amount);
-    if (!val || isNaN(val)) return;
-
-    const safeCategory =
-      isIncome && !isSpendingCategory(selectedCat) ? "Other" : selectedCat;
-
-    const newTx: Transaction = {
-      id: generateId(),
-      date: selectedDateISO,
-      amount: isIncome ? Math.abs(val) : -Math.abs(val),
-      category: safeCategory,
-      note: note,
-      isSystem: false,
-    };
-
-    const newTxs = [newTx, ...transactions];
-    setTransactions(newTxs);
-    await saveTransactions(newTxs);
-    Vibration.vibrate(10);
-
-    // Reset form
-    setAmount("");
-    setNote("");
-  };
-
-  const handleDeleteTransaction = async (id: string) => {
-    const txToDelete = transactions.find((tx) => tx.id === id);
-    if (!txToDelete) return;
-
-    // Finalize any existing pending delete immediately.
-    if (deleteTimerRef.current && pendingDelete) {
-      clearTimeout(deleteTimerRef.current);
-      deleteTimerRef.current = null;
-      await saveTransactions(pendingDelete.nextTxs);
-      setPendingDelete(null);
-    }
-
-    const nextTxs = transactions.filter((tx) => tx.id !== id);
-    setTransactions(nextTxs);
-    setPendingDelete({ tx: txToDelete, previousTxs: transactions, nextTxs });
-    Vibration.vibrate(10);
-
-    deleteTimerRef.current = setTimeout(async () => {
-      await saveTransactions(nextTxs);
-      setPendingDelete(null);
-      deleteTimerRef.current = null;
-    }, 5000);
-  };
-
-  const handleStartEdit = (tx: Transaction) => {
-    setEditingId(tx.id);
-    setEditDate(tx.date);
-    setEditAmount(String(Math.abs(tx.amount)));
-    setEditNote(tx.note ?? "");
-    setEditCategory(tx.category);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setEditDate("");
-    setEditAmount("");
-    setEditNote("");
-    setEditCategory("Food");
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editingId) return;
-    const parsedAmount = parseFloat(editAmount);
-    if (!editDate || isNaN(parsedAmount)) return;
-
-    const nextTxs = transactions.map((tx) => {
-      if (tx.id !== editingId) return tx;
-      const signedAmount =
-        tx.amount >= 0 ? Math.abs(parsedAmount) : -Math.abs(parsedAmount);
-      return {
-        ...tx,
-        date: editDate,
-        amount: signedAmount,
-        note: editNote,
-        category: editCategory,
-      };
-    });
-
-    setTransactions(nextTxs);
-    await saveTransactions(nextTxs);
-    Vibration.vibrate(10);
-    handleCancelEdit();
-  };
-
-  const handleUndoDelete = async () => {
-    if (!pendingDelete) return;
-    if (deleteTimerRef.current) {
-      clearTimeout(deleteTimerRef.current);
-      deleteTimerRef.current = null;
-    }
-    setTransactions(pendingDelete.previousTxs);
-    await saveTransactions(pendingDelete.previousTxs);
-    setPendingDelete(null);
-  };
-
-  // Filter Logic
-  const getFilteredTransactions = () => {
-    return selectedDayTxs
-      .filter((t) => {
-        if (filter === "All") return true;
-        if (filter === "Spending")
-          return !["Bills", "Savings", "Income"].includes(t.category);
-        return t.category === filter;
-      })
-      .sort((a, b) => {
-        if (a.isSystem && !b.isSystem) return 1;
-        if (!a.isSystem && b.isSystem) return -1;
-
-        if (!a.isSystem && !b.isSystem) {
-          return new Date(b.date).getTime() - new Date(a.date).getTime();
-        }
-
-        const systemOrder: Record<string, number> = {
-          Bills: 0,
-          Savings: 1,
-          Income: 2,
-        };
-        const orderDiff =
-          (systemOrder[a.category] ?? 99) - (systemOrder[b.category] ?? 99);
-        if (orderDiff !== 0) return orderDiff;
-
-        if (a.category === "Bills" && b.category === "Bills") {
-          return Math.abs(a.amount) - Math.abs(b.amount);
-        }
-
-        return 0;
-      });
-  };
-
-  const filteredList = getFilteredTransactions();
-
-  const handleDateChange = (_: unknown, date?: Date) => {
-    if (Platform.OS === "android") {
-      setShowDatePicker(false);
-    }
-    if (date) {
-      setSelectedDateISO(date.toLocaleDateString("en-CA"));
-    }
-  };
-
-  const shiftSelectedDate = (days: number) => {
-    const base = new Date(`${selectedDateISO}T00:00:00`);
-    const next = new Date(base);
-    next.setDate(base.getDate() + days);
-    setSelectedDateISO(next.toLocaleDateString("en-CA"));
-  };
-
-  return (
-    <SafeAreaView className="flex-1 bg-background">
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ paddingBottom: 120 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#ffffff"
-            />
-          }
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Header */}
-          <View className="p-6 flex-row justify-between items-center">
-            <View className="gap-1">
-              <View className="flex-row items-center gap-2">
-                <Pressable
-                  onPress={() => shiftSelectedDate(-1)}
-                  className="py-1"
-                  hitSlop={10}
-                >
-                  <ChevronLeft size={18} color="#6b7280" />
-                </Pressable>
-                <Pressable
-                  onPress={() => setShowDatePicker(true)}
-                  className="flex-row items-center"
-                >
-                  <Text className="text-3xl font-bold text-white">
-                    {selectedDateLabel}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => shiftSelectedDate(1)}
-                  className="py-1"
-                  hitSlop={10}
-                >
-                  <ChevronRight size={18} color="#6b7280" />
-                </Pressable>
-              </View>
-              <Text className="text-xs text-gray-400">Tap to change</Text>
-            </View>
-            <View className="flex-row gap-4">
-              <Pressable onPress={onRefresh} className="p-2">
-                <RefreshCw size={24} color="#9ca3af" />
-              </Pressable>
-              <Link href="/setup" asChild>
-                <Pressable className="p-2">
-                  <Settings size={24} color="#9ca3af" />
-                </Pressable>
-              </Link>
-            </View>
-          </View>
-
-          {viewMode === "day" ? (
-            <>
-              {/* Summary Cards */}
-              <Animated.View
-                entering={FadeInDown.duration(300).delay(100)}
-                className="px-6 flex-col gap-4 mb-6"
-              >
-                <View>
-                  <Pressable
-                    onPress={() =>
-                      setExpandedCard(expandedCard === "period" ? null : "period")
-                    }
-                  >
-                    <SummaryCard
-                      title="Left this month"
-                      mainValue={formatMoney0(monthLeft)}
-                      mainIsPositive={monthLeft >= 0}
-                      subValue={`${formatMoney0(monthBudgetTotal)} budget  ${daysLeftInMonth} days left`}
-                      footerText={`${nextResetLabel}  Tap for month breakdown`}
-                    >
-                      {expandedCard === "period" && (
-                        <View className="gap-3">
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Left this month
-                            </Text>
-                            <Text
-                              className={`text-sm font-semibold ${
-                                monthLeft >= 0 ? "text-green-500" : "text-red-500"
-                              }`}
-                            >
-                              {formatMoney0(monthLeft)}
-                            </Text>
-                          </View>
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Spent so far
-                            </Text>
-                            <Text className="text-sm font-semibold text-white">
-                              {formatMoney0(discretionarySpent)}
-                            </Text>
-                          </View>
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Overspent days
-                            </Text>
-                            <Text className="text-sm font-semibold text-white">
-                              {overspentDays}
-                            </Text>
-                          </View>
-                          <View className="flex-row justify-between">
-                            <Text className="text-xs text-gray-500">
-                              Budget mode
-                            </Text>
-                            <Text className="text-sm font-semibold text-white">
-                              {rolloverUnspent ? "rollover" : "fixed"}
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-                    </SummaryCard>
-                  </Pressable>
-                </View>
-                <View>
-                  <Pressable
-                    onPress={() =>
-                      setExpandedCard(expandedCard === "today" ? null : "today")
-                    }
-                  >
-                    <SummaryCard
-                      title="Safe to spend today"
-                      mainValue={formatMoney0(remainingToday)}
-                      mainIsPositive={remainingToday >= 0}
-                      subValue={`${formatMoney0(safeToSpendToday)} safe today  ${
-                        rolloverUnspent ? "rollover" : "fixed"
-                      }`}
-                      footerText="Updates as you spend"
-                    >
-                      {expandedCard === "today" && (
-                        <View className="gap-3">
-                          <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                            Todays guide
-                          </Text>
-                          <View className="flex-row gap-2">
-                            <View className="px-3 py-1 rounded-full bg-white/5 border border-white/10">
-                              <Text className="text-xs text-gray-300">
-                                Net today: {formatMoney0(todayNet)}
-                              </Text>
-                            </View>
-                            <View className="px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20">
-                              <Text className="text-xs text-emerald-200">
-                                Reimbursed: {formatMoney0(todayReimbursed)}
-                              </Text>
-                            </View>
-                          </View>
-                          <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">
-                            Today's spending
-                          </Text>
-                          {todaySpending.totalSpent === 0 ? (
-                            <Text className="text-xs text-gray-500 mb-2">
-                              No spending yet today.
-                            </Text>
-                          ) : (
-                            <View className="gap-4 mb-2">
-                              {spendingCategories.map((cat) => {
-                                const spent = todaySpending.totals[cat];
-                                if (spent <= 0) return null;
-                                const pctSpent = todaySpending.totalSpent
-                                  ? (spent / todaySpending.totalSpent) * 100
-                                  : 0;
-                                const pctIncome = config.monthlyIncome
-                                  ? (spent / config.monthlyIncome) * 100
-                                  : 0;
-                                return (
-                                  <View key={cat} className="gap-2">
-                                    <View className="flex-row justify-between">
-                                      <Text className="text-sm text-white">
-                                        {cat}
-                                      </Text>
-                                      <Text className="text-xs text-gray-500">
-                                        {pctSpent.toFixed(0)}% spent •{" "}
-                                        {pctIncome.toFixed(0)}% income
-                                      </Text>
-                                    </View>
-                                    <View className="gap-2">
-                                      <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                        <View
-                                          style={{
-                                            width: `${Math.min(
-                                              100,
-                                              pctSpent
-                                            )}%`,
-                                            backgroundColor:
-                                              CATEGORY_STYLES[cat].selectedBg,
-                                          }}
-                                          className="h-2"
-                                        />
-                                      </View>
-                                      <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                                        <View
-                                          style={{
-                                            width: `${Math.min(
-                                              100,
-                                              pctIncome
-                                            )}%`,
-                                            backgroundColor:
-                                              CATEGORY_STYLES[cat].unselectedBg,
-                                          }}
-                                          className="h-2"
-                                        />
-                                      </View>
-                                    </View>
-                                  </View>
-                                );
-                              })}
-                            </View>
-                          )}
-                          <View className="gap-3">
-                            {todaySpendingTxs.map((tx) => (
-                              <View
-                                key={tx.id}
-                                className={`flex-row justify-between items-center gap-3 ${
-                                  tx.isSystem ? "opacity-50" : "opacity-100"
-                                }`}
-                              >
-                                <View className="flex-row gap-3 items-center flex-1">
-                                  <View
-                                    style={{
-                                      width: 32,
-                                      height: 32,
-                                      borderRadius: 16,
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      backgroundColor:
-                                        CATEGORY_STYLES[tx.category].badgeBg,
-                                    }}
-                                  >
-                                    <Text
-                                      className={`text-[10px] font-bold ${
-                                        CATEGORY_TEXT_COLORS[tx.category].badge
-                                      }`}
-                                    >
-                                      {tx.category[0]}
-                                    </Text>
-                                  </View>
-                                  <View className="flex-1">
-                                    <Text className="font-medium text-white">
-                                      {tx.category}
-                                    </Text>
-                                    <Text className="text-xs text-gray-500">
-                                      {tx.note
-                                        ? `${tx.note} • ${tx.date}`
-                                        : tx.date}
-                                    </Text>
-                                  </View>
-                                </View>
-                                <Text className="font-bold text-white">
-                                  {tx.amount.toFixed(2)}
-                                </Text>
-                              </View>
-                            ))}
-                            {todaySpendingTxs.length === 0 && (
-                              <Text className="text-center text-gray-600 mt-2">
-                                No transactions found
-                              </Text>
-                            )}
-                          </View>
-                        </View>
-                      )}
-                    </SummaryCard>
-                  </Pressable>
-                </View>
-              </Animated.View>
-
-              {/* Add Transaction Form */}
-              <Animated.View
-                entering={FadeInDown.duration(300).delay(200)}
-                className="px-6 mb-8"
-              >
-                <Pressable
-                  onPress={() => setShowAddCard(true)}
-                  className="w-full rounded-3xl border border-[#2f2f2f] bg-[#1a1a1a] p-4 flex-row items-center justify-between"
-                >
-                  <View className="flex-row items-center gap-3">
-                    <View className="w-1 h-12 rounded-full bg-emerald-400/80" />
-                    <View className="gap-1">
-                      <Text className="text-white font-semibold text-base">
-                      Add transaction
-                      </Text>
-                      <Text className="text-xs text-gray-400">
-                        Tap to enter amount and details
-                      </Text>
-                    </View>
-                  </View>
-                  <View className="h-10 px-4 rounded-full bg-emerald-400/15 items-center justify-center border border-emerald-400/30">
-                    <Text className="text-emerald-200 font-semibold">
-                      Amount
-                    </Text>
-                  </View>
-                </Pressable>
-              </Animated.View>
-
-              {/* Log Section */}
-              <Animated.View
-                entering={FadeInDown.duration(300).delay(300)}
-                className="bg-cardAlt rounded-t-3xl min-h-[400px] p-6"
-              >
-                <View className="flex-row items-end justify-between mb-6">
-                  <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                    {selectedDateLabel} transactions
-                  </Text>
-                  <Text className="text-xs text-gray-500">
-                    {filteredList.length} total
-                  </Text>
-                </View>
-
-                {/* Transaction List */}
-                <View className="gap-4">
-                  {filteredList.map((tx) => (
-                    <View key={tx.id} className="gap-2">
-                      <View
-                        className={`flex-row justify-between items-center gap-3 ${
-                          tx.isSystem ? "opacity-50" : "opacity-100"
-                        }`}
-                      >
-                        <View className="flex-row gap-3 items-center flex-1">
-                          <View
-                            style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 20,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              backgroundColor:
-                                CATEGORY_STYLES[tx.category].badgeBg,
-                            }}
-                          >
-                            <Text
-                              className={`text-xs font-bold ${
-                                CATEGORY_TEXT_COLORS[tx.category].badge
-                              }`}
-                            >
-                              {tx.category[0]}
-                            </Text>
-                          </View>
-                          <View className="flex-1">
-                            <Text className="font-medium text-white">
-                              {tx.category}
-                            </Text>
-                            <Text className="text-xs text-gray-500">
-                              {tx.note
-                                ? `${tx.note} • ${tx.date}`
-                                : tx.date}{" "}
-                              {tx.isSystem && "(Auto)"}
-                            </Text>
-                          </View>
-                        </View>
-                        <View className="flex-row items-center gap-3">
-                          <Text
-                            className={`font-bold ${
-                              tx.amount > 0 ? "text-green-500" : "text-white"
-                            }`}
-                          >
-                            {tx.amount > 0 ? "+" : ""}
-                            {tx.amount.toFixed(2)}
-                          </Text>
-                          <Pressable
-                            onPress={() => handleStartEdit(tx)}
-                            className="p-1"
-                          >
-                            <Pencil size={18} color="#6b7280" />
-                          </Pressable>
-                          <Pressable
-                            onPress={() => handleDeleteTransaction(tx.id)}
-                            className="p-1"
-                          >
-                            <Trash2 size={18} color="#6b7280" />
-                          </Pressable>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
-                  {filteredList.length === 0 && (
-                    <View className="items-center mt-10 gap-2">
-                      <Text className="text-center text-gray-600">
-                        No transactions found
-                      </Text>
-                      <Text className="text-center text-gray-500 text-xs">
-                        Tap Add to create your first transaction.
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </Animated.View>
-            </>
-          ) : (
-            <Animated.View
-              entering={FadeInDown.duration(300).delay(100)}
-              className="px-6 flex-col gap-4"
-            >
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-gray-400 text-sm uppercase tracking-wider font-semibold">
-                  Month breakdown
-                </Text>
-                <View className="flex-row justify-between">
-                  <View>
-                    <Text className="text-xs text-gray-500">Left</Text>
-                    <Text
-                      className={`text-2xl font-bold ${
-                        periodLeft >= 0 ? "text-green-500" : "text-red-500"
-                      }`}
-                    >
-                      {formatMoney0(periodLeft)}
-                    </Text>
-                  </View>
-                  <View className="items-end">
-                    <Text className="text-xs text-gray-500">
-                      Overspent days
-                    </Text>
-                    <Text className="text-2xl font-bold text-white">
-                      {overspentDays}
-                    </Text>
-                  </View>
-                </View>
-                <View className="flex-row justify-between">
-                  <View>
-                    <Text className="text-xs text-gray-500">Spent</Text>
-                    <Text className="text-lg font-semibold text-white">
-                      {formatMoney0(discretionarySpent)}
-                    </Text>
-                  </View>
-                  <View>
-                    <Text className="text-xs text-gray-500">Budget mode</Text>
-                    <Text className="text-lg font-semibold text-white">
-                      {rolloverUnspent ? "Rollover" : "Fixed"}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                  Full category breakdown
-                </Text>
-                {fullExpenses.totalSpent === 0 ? (
-                  <Text className="text-xs text-gray-500">
-                    No expenses yet for this month.
-                  </Text>
-                ) : (
-                  <View className="gap-4">
-                    {expenseCategories.map((cat) => {
-                      const spent = fullExpenses.totals[cat];
-                      if (spent <= 0) return null;
-                      const pct = pctOfIncome(spent);
-                      return (
-                        <View key={cat} className="gap-2">
-                          <View className="flex-row justify-between">
-                            <Text className="text-sm text-white">{cat}</Text>
-                            <Text className="text-xs text-gray-500">
-                              {pct.toFixed(0)}% • ${spent.toFixed(0)}
-                            </Text>
-                          </View>
-                          <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                            <View
-                              style={{
-                                width: `${Math.min(100, pct)}%`,
-                                backgroundColor: CATEGORY_STYLES[cat].selectedBg,
-                              }}
-                              className="h-2"
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-
-              <View className="bg-card border border-border rounded-3xl p-5 gap-3">
-                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                  Category breakdown
-                </Text>
-                {periodSpending.totalSpent === 0 ? (
-                  <Text className="text-xs text-gray-500">
-                    No spending yet for this month.
-                  </Text>
-                ) : (
-                  <View className="gap-4">
-                    {spendingCategories.map((cat) => {
-                      const spent = periodSpending.totals[cat];
-                      if (spent <= 0) return null;
-                      const pctSpent = periodSpending.totalSpent
-                        ? (spent / periodSpending.totalSpent) * 100
-                        : 0;
-                      return (
-                        <View key={cat} className="gap-2">
-                          <View className="flex-row justify-between">
-                            <Text className="text-sm text-white">{cat}</Text>
-                            <Text className="text-xs text-gray-500">
-                              {pctSpent.toFixed(0)}% • ${spent.toFixed(0)}
-                            </Text>
-                          </View>
-                          <View className="w-full h-2 bg-[#202020] rounded-full overflow-hidden">
-                            <View
-                              style={{
-                                width: `${Math.min(100, pctSpent)}%`,
-                                backgroundColor:
-                                  CATEGORY_STYLES[cat].selectedBg,
-                              }}
-                              className="h-2"
-                            />
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
-
-              <View className="bg-cardAlt rounded-3xl p-5 gap-3">
-                <Text className="text-xs text-gray-400 uppercase tracking-wider font-semibold">
-                  Month log
-                </Text>
-                {periodLogTxs.map((tx) => (
-                  <View
-                    key={tx.id}
-                    className={`flex-row justify-between items-center gap-3 ${
-                      tx.isSystem ? "opacity-50" : "opacity-100"
-                    }`}
-                  >
-                    <View className="flex-row gap-3 items-center flex-1">
-                      <View
-                        style={{
-                          width: 32,
-                          height: 32,
-                          borderRadius: 16,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: CATEGORY_STYLES[tx.category].badgeBg,
-                        }}
-                      >
-                        <Text
-                          className={`text-[10px] font-bold ${
-                            CATEGORY_TEXT_COLORS[tx.category].badge
-                          }`}
-                        >
-                          {tx.category[0]}
-                        </Text>
-                      </View>
-                      <View className="flex-1">
-                        <Text className="font-medium text-white">
-                          {tx.category}
-                        </Text>
-                        <Text className="text-xs text-gray-500">
-                          {tx.note ? `${tx.note} • ${tx.date}` : tx.date}{" "}
-                          {tx.isSystem && "(Auto)"}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text
-                      className={`font-bold ${
-                        tx.amount > 0 ? "text-green-500" : "text-white"
-                      }`}
-                    >
-                      {tx.amount > 0 ? "+" : ""}
-                      {tx.amount.toFixed(2)}
-                    </Text>
-                  </View>
-                ))}
-                {periodLogTxs.length === 0 && (
-                  <Text className="text-center text-gray-600 mt-2">
-                    No transactions found
-                  </Text>
-                )}
-              </View>
-            </Animated.View>
-          )}
-        </ScrollView>
-
-        <View className="border-t border-border bg-background">
-          <View className="flex-row items-stretch">
-            <Pressable
-              onPress={() => setViewMode("day")}
-              className={`flex-1 py-4 items-center ${
-                viewMode === "day" ? "bg-white/10" : "bg-transparent"
-              }`}
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  viewMode === "day" ? "text-white" : "text-gray-500"
-                }`}
-              >
-                Day + Log
-              </Text>
-            </Pressable>
-            <View className="w-px bg-border" />
-            <Pressable
-              onPress={() => setViewMode("period")}
-              className={`flex-1 py-4 items-center ${
-                viewMode === "period" ? "bg-white/10" : "bg-transparent"
-              }`}
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  viewMode === "period" ? "text-white" : "text-gray-500"
-                }`}
-              >
-                Month Breakdown
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        <Modal
-          transparent
-          animationType="fade"
-          visible={!!editingId}
-          onRequestClose={handleCancelEdit}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
-          >
-            <Pressable
-              className="flex-1 bg-black/60 justify-end px-6 pb-8"
-              onPress={handleCancelEdit}
-            >
-              <Pressable
-                className="bg-background border border-border rounded-3xl p-5 gap-4"
-                onPress={() => {}}
-              >
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-400 uppercase tracking-wider">
-                    Edit transaction
-                  </Text>
-                  <Pressable onPress={handleCancelEdit}>
-                    <Text className="text-xs text-gray-400">Close</Text>
-                  </Pressable>
-                </View>
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ gap: 16, paddingBottom: 8 }}
-                >
-                  <View className="flex-row gap-3">
-                    <TextInput
-                      value={editDate}
-                      onChangeText={setEditDate}
-                      placeholder="YYYY-MM-DD"
-                      placeholderTextColor="#6b7280"
-                      className="flex-1 bg-borderAlt p-3 rounded-xl text-white border border-border"
-                    />
-                    <TextInput
-                      keyboardType="decimal-pad"
-                      value={editAmount}
-                      onChangeText={setEditAmount}
-                      placeholder="$"
-                      placeholderTextColor="#6b7280"
-                      className="w-28 bg-borderAlt p-3 rounded-xl text-white border border-border"
-                    />
-                  </View>
-                  <CategoryGrid
-                    selected={editCategory}
-                    onSelect={setEditCategory}
-                  />
-                  <TextInput
-                    placeholder="Note (optional)"
-                    placeholderTextColor="#6b7280"
-                    value={editNote}
-                    onChangeText={setEditNote}
-                    className="w-full border-b border-border pb-2 text-gray-400"
-                  />
-                  <View className="flex-row gap-2">
-                    <Pressable
-                      onPress={handleSaveEdit}
-                      className="flex-1 bg-green-600 p-3 rounded-xl items-center"
-                    >
-                      <Text className="text-white font-semibold">Save</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={handleCancelEdit}
-                      className="flex-1 bg-[#2a2a2a] p-3 rounded-xl items-center"
-                    >
-                      <Text className="text-gray-300 font-semibold">
-                        Cancel
-                      </Text>
-                    </Pressable>
-                  </View>
-                </ScrollView>
-              </Pressable>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Modal>
-
-        <Modal
-          transparent
-          animationType="fade"
-          visible={showAddCard}
-          onRequestClose={() => setShowAddCard(false)}
-        >
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            className="flex-1"
-          >
-            <Pressable
-              className="flex-1 bg-black/60 justify-end px-6 pb-8"
-              onPress={() => setShowAddCard(false)}
-            >
-              <Pressable
-                className="bg-background border border-border rounded-3xl p-5 gap-4"
-                onPress={() => {}}
-              >
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-400 uppercase tracking-wider">
-                    New transaction
-                  </Text>
-                  <Pressable onPress={() => setShowAddCard(false)}>
-                    <Text className="text-xs text-gray-400">Close</Text>
-                  </Pressable>
-                </View>
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ gap: 16, paddingBottom: 8 }}
-                >
-                  <AmountToggle
-                    amount={amount}
-                    setAmount={setAmount}
-                    isIncome={isIncome}
-                    setIsIncome={setIsIncome}
-                  />
-                  <CategoryGrid
-                    selected={selectedCat}
-                    onSelect={setSelectedCat}
-                    allowedCategories={
-                      isIncome ? reimbursementCategories : undefined
-                    }
-                  />
-                  <TextInput
-                    placeholder="Note (optional)"
-                    placeholderTextColor="#6b7280"
-                    value={note}
-                    onChangeText={setNote}
-                    className="w-full border-b border-border pb-2 text-gray-400"
-                  />
-                  <Pressable
-                    onPress={async () => {
-                      const val = parseFloat(amount);
-                      if (!val || isNaN(val)) return;
-                      await handleAddTransaction();
-                      setShowAddCard(false);
-                    }}
-                    className={`w-full py-4 rounded-2xl shadow-lg items-center ${
-                      isIncome ? "bg-green-600" : "bg-red-600"
-                    }`}
-                  >
-                    <Text className="text-white font-bold text-base">
-                      Add Transaction
-                    </Text>
-                  </Pressable>
-                </ScrollView>
-              </Pressable>
-            </Pressable>
-          </KeyboardAvoidingView>
-        </Modal>
-      </KeyboardAvoidingView>
-
-      {pendingDelete && (
-        <View className="absolute bottom-6 left-6 right-6 rounded-2xl bg-[#1a1a1a] border border-border px-4 py-3 flex-row items-center justify-between">
-          <Text className="text-sm text-gray-200">
-            Deleted {pendingDelete.tx.category}
-          </Text>
-          <Pressable onPress={handleUndoDelete} className="px-3 py-1">
-            <Text className="text-sm text-blue-400 font-semibold">Undo</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {showDatePicker &&
-        (Platform.OS === "ios" ? (
-          <Modal
-            transparent
-            animationType="fade"
-            visible={showDatePicker}
-            onRequestClose={() => setShowDatePicker(false)}
-          >
-            <Pressable
-              className="flex-1 bg-black/60 justify-end"
-              onPress={() => setShowDatePicker(false)}
-            >
-              <Pressable
-                className="bg-[#1c1c1e] p-4 rounded-t-2xl"
-                onPress={() => {}}
-              >
-                <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-white text-base font-semibold">
-                    Select date
-                  </Text>
-                  <Pressable onPress={() => setShowDatePicker(false)}>
-                    <Text className="text-blue-400">Done</Text>
-                  </Pressable>
-                </View>
-                <DateTimePicker
-                  value={selectedDate}
-                  mode="date"
-                  display="inline"
-                  onChange={handleDateChange}
-                />
-              </Pressable>
-            </Pressable>
-          </Modal>
-        ) : (
-          <DateTimePicker
-            value={selectedDate}
-            mode="date"
-            display="calendar"
-            onChange={handleDateChange}
-          />
-        ))}
-    </SafeAreaView>
-  );
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { ArrowRight, CalendarDays, FlaskConical, List, LockKeyhole, Plus, SlidersHorizontal, X } from "lucide-react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Activity, Allowance, Today } from "../components/dashboard";
+import { GlassTabBar } from "../components/GlassTabBar";
+import { TransactionImport } from "../components/TransactionImport";
+import { PlanForm, PlanSummary, TransactionForm } from "../components/forms";
+import { Action, Brand, IconButton, ThemeToggle, Txt, useTheme } from "../components/ui";
+import { budgetFor, isoDate } from "../lib/budget";
+import { sampleData } from "../lib/demo";
+import { loadData, saveConfig, saveTransactions } from "../lib/storage";
+import type { BudgetConfig, Transaction } from "../types";
+
+const glassTabBarHeight = 62;
+
+const tabs = [
+  { name: "Today", icon: CalendarDays },
+  { name: "Activity", icon: List },
+  { name: "Plan", icon: SlidersHorizontal },
+] as const;
+type Screen = (typeof tabs)[number]["name"];
+type Store = Awaited<ReturnType<typeof loadData>>;
+
+function Tab({ item, selected, desktop, onPress }: { item: (typeof tabs)[number]; selected: boolean; desktop: boolean; onPress: () => void }) {
+  const { c } = useTheme();
+  const Icon = item.icon;
+  return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress}
+    style={({ pressed }) => ({ flex: desktop ? undefined : 1, flexDirection: desktop ? "row" : "column",
+      gap: desktop ? 11 : 4, alignItems: "center", justifyContent: desktop ? "flex-start" : "center", minHeight: desktop ? 48 : 54,
+      paddingHorizontal: desktop ? 13 : 2, borderRadius: 13, backgroundColor: selected ? c.soft : "transparent", opacity: pressed ? 0.65 : 1 })}>
+    <Icon size={20} color={selected ? c.accent : c.muted} strokeWidth={selected ? 2.4 : 1.8} />
+    <Txt style={{ color: selected ? c.accent : c.muted, fontWeight: selected ? "800" : "600", fontSize: desktop ? 14 : 11 }}>{item.name}</Txt>
+  </Pressable>;
 }
 
+function Welcome({ compact, onStart, onDemo }: { compact: boolean; onStart: () => void; onDemo: () => void }) {
+  const { c, s } = useTheme();
+  return <>
+    <View style={{ gap: 10, marginTop: compact ? 10 : 22, maxWidth: 600 }}>
+      <View style={{ alignSelf: "flex-start", backgroundColor: c.soft, borderRadius: 22, paddingVertical: 7, paddingHorizontal: 11 }}>
+        <Txt style={[s.eyebrow, { color: c.accent }]}>A DAILY MONEY TRACKER</Txt>
+      </View>
+      <Txt style={{ fontSize: compact ? 42 : 59, lineHeight: compact ? 46 : 63, letterSpacing: compact ? -2.3 : -3.4, fontWeight: "800" }}>Know what you can spend today.</Txt>
+      <Txt style={[s.muted, { maxWidth: 460, fontSize: 16, lineHeight: 23 }]}>Set a monthly plan, get a daily target, and log spending as you go.</Txt>
+    </View>
+    <View style={{ flexDirection: compact ? "column" : "row", gap: 10 }}>
+      <Action onPress={onStart} label="Create my plan"><Txt style={{ color: c.onPrimary, fontWeight: "700" }}>Create my plan</Txt><ArrowRight size={16} color={c.onPrimary} /></Action>
+      <Action tone="soft" onPress={onDemo}>Explore with sample data</Action>
+    </View>
+    <View style={{ gap: 8, marginTop: 3 }}>
+      <Txt style={s.eyebrow}>EXAMPLE DAILY CHECK-IN</Txt>
+      <Allowance left={42.05} spent={19.95} limit={62} rollover compact={compact} />
+    </View>
+    <View style={[s.row, { gap: 7 }]}><LockKeyhole size={15} color={c.faint} />
+      <Txt style={[s.muted, { fontSize: 12, flex: 1 }]}>Your data stays on this device. No account needed.</Txt></View>
+  </>;
+}
+
+export default function ExpenseMacros() {
+  const { c, s } = useTheme();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const desktop = width >= 970;
+  const wide = width >= 740;
+  const compact = width < 530;
+  const [today, setToday] = useState(isoDate);
+  const [date, setDate] = useState(isoDate);
+  const [screen, setScreen] = useState<Screen>("Today");
+  const [stored, setStored] = useState<Store | null>(null);
+  const [demo, setDemo] = useState<Store | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [editingPlan, setEditingPlan] = useState(false);
+  const [form, setForm] = useState<{ initialDate: string; entry?: Transaction } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [notice, setNotice] = useState<{ message: string; deleted?: Transaction } | null>(null);
+  const busyRef = useRef(false);
+  const scroller = useRef<ScrollView>(null);
+  const data = demo ?? stored;
+  const config = data?.config;
+  const transactions = data?.transactions ?? [];
+
+  function refresh() {
+    setLoadError(false);
+    loadData().then(setStored).catch(() => setLoadError(true));
+  }
+  useEffect(refresh, []);
+  useEffect(() => {
+    const update = () => {
+      const now = isoDate();
+      setToday(previous => previous === now ? previous : now);
+    };
+    const subscription = AppState.addEventListener("change", state => { if (state === "active") update(); });
+    const timer = setInterval(update, 45_000);
+    return () => { subscription.remove(); clearInterval(timer); };
+  }, []);
+  const priorToday = useRef(today);
+  useEffect(() => {
+    if (today !== priorToday.current) {
+      const previous = priorToday.current;
+      setDate(current => current === previous || current > today ? today : current);
+      priorToday.current = today;
+    }
+  }, [today]);
+  useEffect(() => {
+    if (!notice || notice.deleted) return;
+    const timer = setTimeout(() => setNotice(null), 3800);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  function jump(next: Screen) {
+    setScreen(next);
+    setEditingPlan(false);
+    setImporting(false);
+    setSaveError("");
+    scroller.current?.scrollTo({ y: 0, animated: false });
+  }
+  function changePlan() {
+    setSaveError("");
+    setEditingPlan(true);
+    scroller.current?.scrollTo({ y: 0, animated: false });
+  }
+  function openEntry(entry?: Transaction, fromToday = false) {
+    setSaveError("");
+    setForm({ initialDate: fromToday ? date : today, entry });
+  }
+  function stopDemo() {
+    setDemo(null);
+    setNotice(null);
+    setDate(today);
+    jump("Today");
+  }
+  async function persist(next: Store, part: "config" | "transactions") {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
+    setSaveError("");
+    try {
+      if (demo) setDemo(next);
+      else {
+        if (part === "config" && next.config) await saveConfig(next.config);
+        if (part === "transactions") await saveTransactions(next.transactions);
+        setStored(next);
+      }
+      return true;
+    } catch {
+      setSaveError("Couldn’t save to this device. Please try again.");
+      return false;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+  async function importEntries(incoming: Transaction[]) {
+    const existingIds = new Set(transactions.map(tx => tx.id));
+    const additions = incoming.filter(tx => !existingIds.has(tx.id));
+    if (additions.length === 0) {
+      setSaveError("These entries have already been imported.");
+      return;
+    }
+    if (await persist({ config: config ?? null, transactions: [...additions, ...transactions] }, "transactions")) {
+      setDate(additions.reduce((latest, tx) => tx.date > latest ? tx.date : latest, additions[0].date));
+      jump("Activity");
+      setNotice({ message: `${additions.length} transactions imported` });
+    }
+  }
+  async function updateEntry(entry: Transaction) {
+    const entries = form?.entry ? transactions.map(tx => tx.id === entry.id ? entry : tx) : [entry, ...transactions];
+    if (await persist({ config: config ?? null, transactions: entries }, "transactions")) {
+      const edited = !!form?.entry;
+      setDate(entry.date);
+      setForm(null);
+      setNotice({ message: edited ? "Changes saved" : "Transaction logged" });
+    }
+  }
+  async function deleteEntry(entry: Transaction) {
+    if (await persist({ config: config ?? null, transactions: transactions.filter(tx => tx.id !== entry.id) }, "transactions")) {
+      setForm(null);
+      setNotice({ message: "Transaction deleted", deleted: entry });
+    }
+  }
+  async function undoDelete() {
+    if (!notice?.deleted) return;
+    const entry = notice.deleted;
+    if (await persist({ config: config ?? null, transactions: [entry, ...transactions] }, "transactions")) {
+      setNotice({ message: "Transaction restored" });
+    } else setNotice(current => current ? { ...current, message: "Couldn’t restore. Try again." } : null);
+  }
+  async function updatePlan(next: BudgetConfig) {
+    if (await persist({ config: next, transactions }, "config")) {
+      jump(config ? "Plan" : "Today");
+      setNotice({ message: "Monthly plan saved" });
+    }
+  }
+
+  const loggingSelectedDate = screen === "Today" || (screen === "Activity" && date.slice(0, 7) !== today.slice(0, 7));
+  const logEntry = () => openEntry(undefined, loggingSelectedDate);
+  const showTabs = !!config && !editingPlan && !importing;
+  const showGlassTabs = Platform.OS === "web" && !desktop && showTabs;
+  const glassBottom = Math.max(20, insets.bottom - 14);
+  const glassClearance = glassBottom + glassTabBarHeight;
+  const bottomPadding = showGlassTabs ? glassClearance + 12 : 20 + (!showTabs || desktop ? insets.bottom : 0);
+  const metrics = config ? budgetFor(config, transactions, date) : null;
+
+  return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]}>
+    <View style={{ flex: 1, flexDirection: desktop && showTabs ? "row" : "column" }}>
+      {desktop && showTabs && <View style={{ width: 222, backgroundColor: c.surface, borderRightWidth: 1, borderColor: c.border,
+        padding: 17, paddingTop: 24, paddingBottom: 20 + insets.bottom, gap: 23 }}>
+        <Brand small />
+        <View accessibilityRole="tablist" style={{ gap: 5 }}>
+          <Txt style={[s.eyebrow, { marginBottom: 7, marginLeft: 10 }]}>WORKSPACE</Txt>
+          {tabs.map(item => <Tab key={item.name} item={item} selected={screen === item.name} desktop onPress={() => jump(item.name)} />)}
+        </View>
+        <Action label="Log a transaction" onPress={logEntry}><Plus size={18} color={c.onPrimary} /><Txt style={{ color: c.onPrimary, fontWeight: "700" }}>Log transaction</Txt></Action>
+        <View style={[s.between, { marginTop: "auto" }]}>
+          <View style={[s.row, { gap: 8 }]}><LockKeyhole size={14} color={c.faint} /><Txt style={{ color: c.muted, fontSize: 11 }}>Stored on this device</Txt></View>
+          <ThemeToggle />
+        </View>
+      </View>}
+      <View style={{ flex: 1 }}>
+        {(!desktop || !showTabs) && <View style={{ backgroundColor: c.surface, borderBottomWidth: 1, borderColor: c.border }}>
+          <View style={[s.between, { minHeight: 62, paddingHorizontal: compact ? 16 : 26, width: "100%", maxWidth: 940, alignSelf: "center" }]}>
+            <Brand small={compact} />
+            <View style={[s.row, { gap: 8 }]}>
+              <ThemeToggle />
+              {showTabs && <IconButton label="Log a transaction" onPress={logEntry} style={{ backgroundColor: c.primary }}>
+                <Plus size={23} color={c.onPrimary} />
+              </IconButton>}
+            </View>
+          </View>
+        </View>}
+        <ScrollView ref={scroller} keyboardShouldPersistTaps="handled" contentContainerStyle={{
+          flexGrow: 1, paddingTop: compact ? 17 : 25, paddingHorizontal: compact ? 16 : 27, paddingBottom: bottomPadding,
+        }}>
+          <View style={{ width: "100%", maxWidth: editingPlan ? 560 : !config ? 625 : screen === "Plan" ? 650 : 950, alignSelf: "center", gap: 13 }}>
+            {!stored && (loadError ? <View style={[s.panel, { padding: 20, gap: 12 }]}>
+              <Txt style={s.title}>Couldn’t open your data</Txt><Txt style={s.muted}>Check that storage is available on this device and try again.</Txt><Action onPress={refresh}>Try again</Action>
+            </View> : <ActivityIndicator color={c.accent} accessibilityLabel="Loading your budget" style={{ marginTop: 40 }} />)}
+            {demo && <View style={[s.row, { backgroundColor: c.soft, paddingLeft: 12, borderRadius: 13, gap: 7 }]}>
+              <FlaskConical size={16} color={c.accent} /><Txt style={{ color: c.accent, flex: 1, fontSize: 12, fontWeight: "700" }}>Sample data · changes won’t be saved</Txt>
+              <IconButton label="Exit sample data" onPress={stopDemo} disabled={busy}><X size={18} color={c.accent} /></IconButton>
+            </View>}
+            {!!stored && !config && !editingPlan && <Welcome compact={compact} onStart={changePlan} onDemo={() => { setDemo(sampleData(today)); setDate(today); jump("Today"); }} />}
+            {editingPlan && <PlanForm config={config ?? null} busy={busy} error={saveError} onSave={updatePlan} onCancel={() => { setEditingPlan(false); setSaveError(""); }} />}
+            {importing && <TransactionImport busy={busy} error={saveError} onSave={importEntries} onCancel={() => jump("Activity")} />}
+            {showTabs && metrics && config && (screen === "Today" ?
+              <Today data={metrics} transactions={transactions} date={date} today={today} compact={compact} wide={wide}
+                rollover={!!config.rolloverUnspent} onDate={setDate} add={() => openEntry(undefined, true)} edit={openEntry} activity={() => jump("Activity")} /> :
+              screen === "Activity" ? <Activity data={metrics} date={date} wide={wide} onDate={setDate}
+                add={logEntry} edit={openEntry} openImport={() => {
+                  setSaveError("");
+                  setImporting(true);
+                  scroller.current?.scrollTo({ y: 0, animated: false });
+                }} /> :
+              <PlanSummary config={config} onEdit={changePlan} />)}
+          </View>
+        </ScrollView>
+        {!!notice && !form && !editingPlan && !importing && <View accessibilityLiveRegion="polite" style={[s.between, {
+          alignSelf: "center", marginHorizontal: 15, marginBottom: 7, backgroundColor: c.hero, paddingLeft: 14, borderRadius: 13, gap: 9, minHeight: 43,
+        }, showGlassTabs && { position: "absolute", bottom: glassClearance + 4, zIndex: 2 }]}>
+          <Txt style={{ color: c.onHero, fontWeight: "600", fontSize: 13 }}>{notice.message}</Txt>
+          {notice.deleted && <Action tone="soft" onPress={undoDelete} disabled={busy} style={{ minHeight: 36 }}>Undo</Action>}
+          <IconButton label="Dismiss message" onPress={() => setNotice(null)} disabled={busy}><X size={16} color={c.onHero} /></IconButton>
+        </View>}
+        {showGlassTabs && <GlassTabBar tabs={tabs} active={screen} bottom={glassBottom} height={glassTabBarHeight} onSelect={jump} />}
+        {!desktop && showTabs && !showGlassTabs && <View accessibilityRole="tablist" style={{
+          flexDirection: "row", gap: 7, backgroundColor: c.surface, borderTopWidth: 1, borderColor: c.border,
+          paddingTop: 6, paddingHorizontal: 13, paddingBottom: Math.max(insets.bottom, 7),
+        }}>
+          {tabs.map(item => <Tab key={item.name} item={item} desktop={false} selected={screen === item.name} onPress={() => jump(item.name)} />)}
+        </View>}
+      </View>
+    </View>
+    {form && <TransactionForm initialDate={form.initialDate} entry={form.entry} busy={busy} error={saveError}
+      onClose={() => { if (!busyRef.current) setForm(null); }} onSave={updateEntry} onDelete={deleteEntry} />}
+  </SafeAreaView>;
+}
