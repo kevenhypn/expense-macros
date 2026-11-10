@@ -2,9 +2,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { PNG } = require("pngjs");
 
-const violet = [87, 64, 220, 255];
-const mist = [247, 247, 251, 255];
-const bars = [[199, 184, 255, 255], [255, 255, 255, 255], [215, 250, 134, 255]];
+const emerald = [8, 113, 79, 255];
+const mist = [245, 246, 245, 255];
+const bars = [[173, 229, 200, 255], [255, 255, 255, 255], [110, 231, 168, 255]];
 
 function icon(file, width, height, background, scale = 1) {
   const img = new PNG({ width, height, colorType: background ? 2 : 6 });
@@ -28,7 +28,7 @@ function icon(file, width, height, background, scale = 1) {
   fs.writeFileSync(file, PNG.sync.write(img, { colorType: background ? 2 : 6, inputColorType: 6 }));
 }
 
-icon("assets/icon.png", 1024, 1024, violet);
+icon("assets/icon.png", 1024, 1024, emerald);
 icon("assets/adaptive-icon.png", 1024, 1024, null, 0.85);
 icon("assets/splash.png", 1024, 1024, mist, 0.37);
-for (const size of [180, 192, 512]) icon(`public/icons/app-${size}.png`, size, size, violet);
+for (const size of [180, 192, 512]) icon(`public/icons/app-${size}.png`, size, size, emerald);

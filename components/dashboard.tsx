@@ -12,6 +12,7 @@ type Budget = ReturnType<typeof budgetFor>;
 const dayName = (date: string) => dateLabel(date, { weekday: "short", month: "short", day: "numeric" });
 const monthName = (date: string) => dateLabel(date, { month: "long", year: "numeric" });
 const percent = (used: number, target: number) => target > 0 ? Math.max(0, Math.round(used / target * 100)) : null;
+const nearingLimit = (used: number, target: number) => target > 0 && used > target * 0.8;
 
 export function DateStrip({ date, today, entries, onDate }: {
   date: string; today: string; entries: Transaction[]; onDate: (date: string) => void;
@@ -26,7 +27,7 @@ export function DateStrip({ date, today, entries, onDate }: {
   return <View style={[s.panel, { paddingHorizontal: 10, paddingBottom: 9 }]}>
     <View style={[s.between, { minHeight: 49 }]}>
       <IconButton label="Previous week" onPress={() => onDate(moveDay(date, -7))}><ChevronLeft size={18} color={c.muted} /></IconButton>
-      <View style={[s.row, { gap: 6 }]}><CalendarDays size={14} color={c.purple} /><Txt style={s.label}>{label}</Txt></View>
+      <View style={[s.row, { gap: 6 }]}><CalendarDays size={14} color={c.accent} /><Txt style={s.label}>{label}</Txt></View>
       <IconButton label="Next week" onPress={() => onDate(moveDay(date, 7))} disabled={moveDay(last, 1) > today}><ChevronRight size={18} color={c.muted} /></IconButton>
     </View>
     <View style={{ flexDirection: "row", gap: 3 }}>
@@ -37,9 +38,9 @@ export function DateStrip({ date, today, entries, onDate }: {
           accessibilityState={{ selected, disabled: day > today }} accessibilityLabel={dayName(day)}
           style={({ pressed }) => ({ flex: 1, minHeight: 61, gap: 3, justifyContent: "center", alignItems: "center", borderRadius: 13,
             backgroundColor: selected ? c.primary : day === today ? c.soft : "transparent", opacity: day > today ? 0.48 : pressed ? 0.7 : 1 })}>
-          <Txt style={{ color: selected ? "#eee9ff" : c.muted, fontSize: 10, fontWeight: "700" }}>{dateLabel(day, { weekday: "short" })}</Txt>
-          <Txt style={{ color: selected ? "#fff" : c.ink, fontSize: 16, fontWeight: "800" }}>{Number(day.slice(-2))}</Txt>
-          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged ? selected ? c.lime : c.purple : "transparent" }} />
+          <Txt style={{ color: selected ? c.onPrimary : c.muted, fontSize: 10, fontWeight: "700" }}>{dateLabel(day, { weekday: "short" })}</Txt>
+          <Txt style={{ color: selected ? c.onPrimary : c.ink, fontSize: 16, fontWeight: "800" }}>{Number(day.slice(-2))}</Txt>
+          <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged ? selected ? c.heroGreen : c.accent : "transparent" }} />
         </Pressable>;
       })}
     </View>
@@ -51,28 +52,30 @@ export function Allowance({ left, spent, limit, rollover, compact, isToday = tru
 }) {
   const { c, s } = useTheme();
   const over = left < 0;
+  const progressColor = over ? c.heroError : nearingLimit(spent, limit) ? c.heroWarning : c.heroGreen;
+  const balanceColor = over ? c.heroError : left > 0 ? c.heroGreen : c.onHero;
   return <View style={{ backgroundColor: c.hero, borderRadius: 26, overflow: "hidden", padding: compact ? 20 : 26, gap: 17 }}>
     <Contours />
     <View style={s.between}>
-      <View style={[s.row, { gap: 8 }]}><Wallet size={15} color="#c7b8ff" /><Txt style={[s.eyebrow, { color: "#e2d8ff" }]}>DAILY ALLOWANCE</Txt></View>
-      <View style={{ backgroundColor: "#393056", paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }}>
-        <Txt style={{ color: "#f0e9ff", fontSize: 10, fontWeight: "700" }}>{rollover ? "Adaptive pace" : "Fixed pace"}</Txt>
+      <View style={[s.row, { gap: 8 }]}><Wallet size={15} color={c.heroGreen} /><Txt style={[s.eyebrow, { color: c.heroMuted }]}>DAILY ALLOWANCE</Txt></View>
+      <View style={{ backgroundColor: c.heroPill, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }}>
+        <Txt style={{ color: c.onHero, fontSize: 10, fontWeight: "700" }}>{rollover ? "Adaptive pace" : "Fixed pace"}</Txt>
       </View>
     </View>
     <View style={[s.between, { gap: 4 }]}>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt style={{ color: "#ddd7ed", fontSize: 13, fontWeight: "600" }}>{over ? "Over allowance" : isToday ? "Left to spend today" : "Left to spend that day"}</Txt>
-        <Txt lines={1} style={[s.number, { color: over ? "#ffc0d2" : "#fff", fontSize: Math.abs(left) >= 1000 ? (compact ? 30 : 38) : (compact ? 43 : 54), letterSpacing: -2.5, marginTop: 1 }]}>{money(Math.abs(left))}</Txt>
+        <Txt style={{ color: c.heroMuted, fontSize: 13, fontWeight: "600" }}>{over ? "Over allowance" : isToday ? "Left to spend today" : "Left to spend that day"}</Txt>
+        <Txt lines={1} style={[s.number, { color: balanceColor, fontSize: Math.abs(left) >= 1000 ? (compact ? 30 : 38) : (compact ? 43 : 54), letterSpacing: -2.5, marginTop: 1 }]}>{money(Math.abs(left))}</Txt>
       </View>
-      <Arc percent={percent(spent, limit)} over={over} size={compact ? 99 : 122} />
+      <Arc percent={percent(spent, limit)} color={progressColor} size={compact ? 99 : 122} />
     </View>
-    <View style={{ height: 1, backgroundColor: "#51486e" }} />
+    <View style={{ height: 1, backgroundColor: c.heroLine }} />
     <View style={[s.row, { gap: 18 }]}>
-      <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: "#ddd7ed", fontSize: 11 }}>{spent < 0 ? "Net refunded" : "Net spent"}</Txt>
-        <Txt style={[s.number, { color: "#fff", fontSize: 17 }]}>{money(Math.abs(spent))}</Txt></View>
-      <View style={{ width: 1, alignSelf: "stretch", backgroundColor: "#51486e" }} />
-      <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: "#ddd7ed", fontSize: 11 }}>Daily target</Txt>
-        <Txt style={[s.number, { color: "#fff", fontSize: 17 }]}>{money(limit)}</Txt></View>
+      <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>{spent < 0 ? "Net refunded" : "Net spent"}</Txt>
+        <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(Math.abs(spent))}</Txt></View>
+      <View style={{ width: 1, alignSelf: "stretch", backgroundColor: c.heroLine }} />
+      <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>Daily target</Txt>
+        <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(limit)}</Txt></View>
     </View>
   </View>;
 }
@@ -81,24 +84,26 @@ export function MonthCard({ data, date, onPress }: { data: Budget; date: string;
   const { c, s } = useTheme();
   const used = percent(data.monthSpent, data.monthBudget);
   const over = data.monthLeft < 0;
+  const progressColor = over ? c.error : nearingLimit(data.monthSpent, data.monthBudget) ? c.warning : c.green;
+  const balanceColor = over ? c.error : data.monthLeft > 0 ? c.green : c.ink;
   const bar = Math.min(100, used ?? (over ? 100 : 0));
   const content = <>
     <View style={[s.between, { gap: 8 }]}>
       <View style={[s.row, { gap: 10 }]}>
-        <View style={{ backgroundColor: c.soft, borderRadius: 11, width: 35, height: 35, justifyContent: "center", alignItems: "center" }}><ChartNoAxesColumnIncreasing color={c.purple} size={18} /></View>
+        <View style={{ backgroundColor: c.soft, borderRadius: 11, width: 35, height: 35, justifyContent: "center", alignItems: "center" }}><ChartNoAxesColumnIncreasing color={c.accent} size={18} /></View>
         <View style={{ gap: 1 }}><Txt style={s.label}>{dateLabel(date, { month: "long" })} budget</Txt><Txt style={{ color: c.muted, fontSize: 11 }}>Flexible spending</Txt></View>
       </View>
-      {onPress && <ArrowRight size={17} color={c.purple} />}
+      {onPress && <ArrowRight size={17} color={c.accent} />}
     </View>
     <View style={[s.between, { alignItems: "flex-end", gap: 8 }]}>
       <View style={{ flexShrink: 1 }}>
-        <Txt style={[s.number, { fontSize: 25, letterSpacing: -0.7, color: over ? c.error : c.ink }]}>{money(Math.abs(data.monthLeft))}</Txt>
+        <Txt style={[s.number, { fontSize: 25, letterSpacing: -0.7, color: balanceColor }]}>{money(Math.abs(data.monthLeft))}</Txt>
         <Txt style={{ color: c.muted, fontSize: 11, marginTop: 2 }}>{over ? "over budget" : "remaining this month"}</Txt>
       </View>
       <Txt style={{ color: c.muted, fontSize: 11 }}>{used === null ? "No allowance" : `${used}% used`}</Txt>
     </View>
     <View style={{ height: 7, backgroundColor: c.track, borderRadius: 8, overflow: "hidden" }}>
-      <View style={{ height: 7, width: `${bar}%`, backgroundColor: over ? c.error : c.purple, borderRadius: 8 }} />
+      <View style={{ height: 7, width: `${bar}%`, backgroundColor: progressColor, borderRadius: 8 }} />
     </View>
     <View style={s.between}><Txt style={{ color: c.muted, fontSize: 11 }}>Net spent {money(data.monthSpent)}</Txt><Txt style={{ color: c.muted, fontSize: 11 }}>Budget {money(data.monthBudget)}</Txt></View>
   </>;
@@ -112,7 +117,7 @@ export function Entries({ items, emptyTitle, emptyText, add, edit, showDate = fa
 }) {
   const { c, s } = useTheme();
   if (!items.length) return <View style={[s.panel, { padding: 21, alignItems: "center", gap: 7 }]}>
-    <View style={{ padding: 10, borderRadius: 13, backgroundColor: c.soft }}><List size={20} color={c.purple} /></View>
+    <View style={{ padding: 10, borderRadius: 13, backgroundColor: c.soft }}><List size={20} color={c.accent} /></View>
     <Txt style={s.label}>{emptyTitle}</Txt><Txt style={[s.muted, { textAlign: "center" }]}>{emptyText}</Txt>
     {add && <Action tone="soft" onPress={add} style={{ marginTop: 4 }}>Log a transaction</Action>}
   </View>;
@@ -140,7 +145,7 @@ function Breakdown({ data }: { data: Budget }) {
   const categories = data.categories.filter(row => row.amount !== 0).sort((a, b) => b.amount - a.amount);
   const total = categories.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
   return <View style={[s.panel, { padding: 17, gap: 15 }]}>
-    <View style={[s.row, { gap: 8 }]}><ArrowDownRight color={c.purple} size={19} /><Txt style={s.label}>Where it went</Txt></View>
+    <View style={[s.row, { gap: 8 }]}><ArrowDownRight color={c.accent} size={19} /><Txt style={s.label}>Where it went</Txt></View>
     {categories.length === 0 ? <Txt style={s.muted}>Category totals appear when you log spending.</Txt> : <>
       {total > 0 && <View style={{ flexDirection: "row", gap: 3, borderRadius: 8, overflow: "hidden", height: 9 }}>
         {categories.filter(row => row.amount > 0).map(row => <View key={row.category} style={{ flex: row.amount / total, backgroundColor: cat[row.category].bar }} />)}
@@ -177,7 +182,7 @@ export function Today({ data, transactions, date, today, compact, wide, rollover
     <View style={{ gap: 7 }}>
       <View style={s.between}>
         <Txt style={s.title}>{isToday ? "Today’s log" : "Daily log"}</Txt>
-        <IconButton label="Add transaction for selected day" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.purple} /></IconButton>
+        <IconButton label="Add transaction for selected day" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.accent} /></IconButton>
       </View>
       <Entries items={data.entries.filter(tx => tx.date === date)} emptyTitle="Nothing logged yet" emptyText="Log a purchase, refund, or extra income to start." add={add} edit={edit} />
     </View>
@@ -218,14 +223,14 @@ export function Activity({ data, date, wide, onDate, edit, add, openImport }: {
           <Txt style={s.title}>Transactions</Txt>
           <View style={[s.row, { gap: 6 }]}>
             <Action onPress={openImport} tone="soft">Import</Action>
-            <IconButton label="Add transaction for selected month" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.purple} /></IconButton>
+            <IconButton label="Add transaction for selected month" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.accent} /></IconButton>
           </View>
         </View>
         <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
           {filters.map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: item === filter }} key={item}
             onPress={() => setFilter(item)} style={{ backgroundColor: item === filter ? c.soft : c.surface, minHeight: 44, justifyContent: "center",
               borderColor: item === filter ? c.soft : c.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10 }}>
-            <Txt style={{ color: item === filter ? c.purple : c.muted, fontSize: 12, fontWeight: "700" }}>{item}</Txt>
+            <Txt style={{ color: item === filter ? c.accent : c.muted, fontSize: 12, fontWeight: "700" }}>{item}</Txt>
           </Pressable>)}
         </View>
         <Entries items={sorted} emptyTitle={filter === "All" ? "No transactions this month" : `No ${filter.toLowerCase()} this month`}

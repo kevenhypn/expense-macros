@@ -29,8 +29,8 @@ function Tab({ item, selected, desktop, onPress }: { item: (typeof tabs)[number]
     style={({ pressed }) => ({ flex: desktop ? undefined : 1, flexDirection: desktop ? "row" : "column",
       gap: desktop ? 11 : 4, alignItems: "center", justifyContent: desktop ? "flex-start" : "center", minHeight: desktop ? 48 : 54,
       paddingHorizontal: desktop ? 13 : 2, borderRadius: 13, backgroundColor: selected ? c.soft : "transparent", opacity: pressed ? 0.65 : 1 })}>
-    <Icon size={20} color={selected ? c.purple : c.muted} strokeWidth={selected ? 2.4 : 1.8} />
-    <Txt style={{ color: selected ? c.purple : c.muted, fontWeight: selected ? "800" : "600", fontSize: desktop ? 14 : 11 }}>{item.name}</Txt>
+    <Icon size={20} color={selected ? c.accent : c.muted} strokeWidth={selected ? 2.4 : 1.8} />
+    <Txt style={{ color: selected ? c.accent : c.muted, fontWeight: selected ? "800" : "600", fontSize: desktop ? 14 : 11 }}>{item.name}</Txt>
   </Pressable>;
 }
 
@@ -39,7 +39,7 @@ function Welcome({ compact, onStart, onDemo }: { compact: boolean; onStart: () =
   return <>
     <View style={{ gap: 10, marginTop: compact ? 10 : 22, maxWidth: 600 }}>
       <View style={{ alignSelf: "flex-start", backgroundColor: c.soft, borderRadius: 22, paddingVertical: 7, paddingHorizontal: 11 }}>
-        <Txt style={[s.eyebrow, { color: c.purple }]}>A DAILY MONEY TRACKER</Txt>
+        <Txt style={[s.eyebrow, { color: c.accent }]}>A DAILY MONEY TRACKER</Txt>
       </View>
       <Txt style={{ fontSize: compact ? 42 : 59, lineHeight: compact ? 46 : 63, letterSpacing: compact ? -2.3 : -3.4, fontWeight: "800" }}>Know what you can spend today.</Txt>
       <Txt style={[s.muted, { maxWidth: 460, fontSize: 16, lineHeight: 23 }]}>Set a monthly plan, get a daily target, and log spending as you go.</Txt>
@@ -237,10 +237,10 @@ export default function ExpenseMacros() {
           <View style={{ width: "100%", maxWidth: editingPlan ? 560 : !config ? 625 : screen === "Plan" ? 650 : 950, alignSelf: "center", gap: 13 }}>
             {!stored && (loadError ? <View style={[s.panel, { padding: 20, gap: 12 }]}>
               <Txt style={s.title}>Couldn’t open your data</Txt><Txt style={s.muted}>Check that storage is available on this device and try again.</Txt><Action onPress={refresh}>Try again</Action>
-            </View> : <ActivityIndicator color={c.purple} accessibilityLabel="Loading your budget" style={{ marginTop: 40 }} />)}
+            </View> : <ActivityIndicator color={c.accent} accessibilityLabel="Loading your budget" style={{ marginTop: 40 }} />)}
             {demo && <View style={[s.row, { backgroundColor: c.soft, paddingLeft: 12, borderRadius: 13, gap: 7 }]}>
-              <FlaskConical size={16} color={c.purple} /><Txt style={{ color: c.purple, flex: 1, fontSize: 12, fontWeight: "700" }}>Sample data · changes won’t be saved</Txt>
-              <IconButton label="Exit sample data" onPress={stopDemo} disabled={busy}><X size={18} color={c.purple} /></IconButton>
+              <FlaskConical size={16} color={c.accent} /><Txt style={{ color: c.accent, flex: 1, fontSize: 12, fontWeight: "700" }}>Sample data · changes won’t be saved</Txt>
+              <IconButton label="Exit sample data" onPress={stopDemo} disabled={busy}><X size={18} color={c.accent} /></IconButton>
             </View>}
             {!!stored && !config && !editingPlan && <Welcome compact={compact} onStart={changePlan} onDemo={() => { setDemo(sampleData(today)); setDate(today); jump("Today"); }} />}
             {editingPlan && <PlanForm config={config ?? null} busy={busy} error={saveError} onSave={updatePlan} onCancel={() => { setEditingPlan(false); setSaveError(""); }} />}

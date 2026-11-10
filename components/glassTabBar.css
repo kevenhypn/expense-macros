@@ -1,11 +1,11 @@
 .glass-tab-dock {
-  --glass-solid: #f5f4f8;
-  --glass-tint: rgb(250 249 255 / 64%);
-  --glass-edge: rgb(53 46 77 / 18%);
+  --glass-solid: #f3f5f4;
+  --glass-tint: rgb(250 252 251 / 64%);
+  --glass-edge: rgb(46 61 52 / 18%);
   --glass-highlight: rgb(255 255 255 / 89%);
-  --glass-shadow: rgb(37 28 64 / 19%);
-  --glass-text: #262333;
-  --glass-selection: rgb(56 49 78 / 10%);
+  --glass-shadow: rgb(25 41 32 / 19%);
+  --glass-text: #222825;
+  --glass-selection: rgb(46 61 52 / 10%);
   --glass-selection-rim: rgb(255 255 255 / 43%);
   position: absolute;
   z-index: 1;
@@ -21,12 +21,12 @@
 }
 
 .glass-tab-dock[data-scheme="dark"] {
-  --glass-solid: #262531;
-  --glass-tint: rgb(37 36 46 / 64%);
+  --glass-solid: #262a28;
+  --glass-tint: rgb(36 40 38 / 64%);
   --glass-edge: rgb(255 255 255 / 14%);
   --glass-highlight: rgb(255 255 255 / 26%);
   --glass-shadow: rgb(0 0 0 / 34%);
-  --glass-text: #faf9ff;
+  --glass-text: #f7faf8;
   --glass-selection: rgb(0 0 0 / 39%);
   --glass-selection-rim: rgb(255 255 255 / 9%);
 }

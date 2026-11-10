@@ -11,7 +11,7 @@ export function DateField({ value, onChange }: { value: string; onChange: (value
   return <View style={{ gap: 7 }}>
     <Txt style={s.label}>Date</Txt>
     <Action tone="soft" label="Change transaction date" onPress={() => setVisible(!visible)}>
-      <CalendarDays size={16} color={c.purple} /><Txt style={[s.label, { color: c.purple }]}>{dateLabel(value, { dateStyle: "medium" })}</Txt>
+      <CalendarDays size={16} color={c.accent} /><Txt style={[s.label, { color: c.accent }]}>{dateLabel(value, { dateStyle: "medium" })}</Txt>
     </Action>
     {visible && <DateTimePicker value={localDate(value)} maximumDate={localDate(isoDate())} mode="date"
       display={Platform.OS === "ios" ? "spinner" : "default"} themeVariant={scheme} onChange={(_, date) => {

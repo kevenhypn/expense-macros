@@ -56,8 +56,8 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
             {types.map(({ id, label, icon: Icon }) => <Pressable accessibilityRole="button" accessibilityState={{ selected: kind === id }}
               key={id} onPress={() => setKind(id)} style={{ flex: 1, minHeight: 44, borderRadius: 10, gap: 4, alignItems: "center", justifyContent: "center",
                 flexDirection: "row", backgroundColor: kind === id ? c.soft : "transparent" }}>
-              <Icon size={14} color={kind === id ? c.purple : c.muted} />
-              <Txt style={{ color: kind === id ? c.purple : c.muted, fontSize: 12, fontWeight: "700" }}>{label}</Txt>
+              <Icon size={14} color={kind === id ? c.accent : c.muted} />
+              <Txt style={{ color: kind === id ? c.accent : c.muted, fontSize: 12, fontWeight: "700" }}>{label}</Txt>
             </Pressable>)}
           </View>
           <Field label="Amount ($)" placeholder="0.00" value={amount} onChangeText={value => { setAmount(value); setIssue(""); }} inputMode="decimal" keyboardType="decimal-pad"
@@ -98,7 +98,7 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
 export function PlanSummary({ config, onEdit }: { config: BudgetConfig; onEdit: () => void }) {
   const { c, s, cat } = useTheme();
   const planItems = [
-    { key: "income", label: "Take-home income", icon: CircleDollarSign, bg: c.soft, color: c.purple },
+    { key: "income", label: "Take-home income", icon: CircleDollarSign, bg: c.soft, color: c.accent },
     { key: "bills", label: "Recurring bills", icon: ReceiptText, bg: cat.Bills.bg, color: cat.Bills.color },
     { key: "savings", label: "Savings target", icon: PiggyBank, bg: cat.Savings.bg, color: cat.Savings.color },
   ] as const;
@@ -108,9 +108,9 @@ export function PlanSummary({ config, onEdit }: { config: BudgetConfig; onEdit: 
       <Txt style={{ fontSize: 36, fontWeight: "800", letterSpacing: -1.5 }}>Monthly plan</Txt>
       <Txt style={s.muted}>Set money aside for bills and savings before you spend.</Txt></View>
     <View style={{ backgroundColor: c.hero, padding: 22, borderRadius: 24, gap: 6 }}>
-      <Txt style={[s.eyebrow, { color: "#dcd1ff" }]}>FLEXIBLE SPENDING TARGET</Txt>
-      <Txt style={[s.number, { color: c.onHero, fontSize: 37, letterSpacing: -1.5 }]}>{money(values.flex)}</Txt>
-      <Txt style={{ color: "#e0d9ef", lineHeight: 19, fontSize: 13 }}>Monthly income minus planned bills and savings.</Txt>
+      <Txt style={[s.eyebrow, { color: c.heroMuted }]}>FLEXIBLE SPENDING TARGET</Txt>
+      <Txt style={[s.number, { color: values.flex < 0 ? c.heroError : values.flex > 0 ? c.heroGreen : c.onHero, fontSize: 37, letterSpacing: -1.5 }]}>{money(values.flex)}</Txt>
+      <Txt style={{ color: c.heroMuted, lineHeight: 19, fontSize: 13 }}>Monthly income minus planned bills and savings.</Txt>
     </View>
     <View style={[s.panel, { paddingHorizontal: 16 }]}>
       {planItems.map(({ key, label, icon: Icon, bg, color }, index) => <View key={key}
@@ -169,7 +169,7 @@ export function PlanForm({ config, onSave, onCancel, busy, error }: {
       <View style={s.divider} />
       <View style={s.between}><Txt style={s.label}>Recurring bills</Txt>
         <Action tone="soft" label="Add a recurring bill" onPress={() => setBills([...bills, { id: generateId(), name: "", amount: "" }])}>
-          <Plus size={15} color={c.purple} /><Txt style={[s.label, { color: c.purple }]}>Add bill</Txt>
+          <Plus size={15} color={c.accent} /><Txt style={[s.label, { color: c.accent }]}>Add bill</Txt>
         </Action></View>
       {bills.length === 0 && <Txt style={s.muted}>Add expenses such as rent, insurance, or subscriptions.</Txt>}
       {bills.map((bill, index) => <View key={bill.id} style={[s.panel, { padding: 10, gap: 8 }]}>
@@ -189,10 +189,10 @@ export function PlanForm({ config, onSave, onCancel, busy, error }: {
       <View style={s.divider} />
       <View style={[s.between, { gap: 12 }]}><View style={{ flex: 1, gap: 3 }}>
         <Txt style={s.label}>Adapt to past spending</Txt><Txt style={s.muted}>Recalculate the daily target as you log this month.</Txt>
-      </View><Switch accessibilityLabel="Adapt to past spending" value={rollover} onValueChange={setRollover} trackColor={{ true: c.purple }} /></View>
+      </View><Switch accessibilityLabel="Adapt to past spending" value={rollover} onValueChange={setRollover} trackColor={{ true: c.accent }} /></View>
     </View>
     <View style={[s.panel, s.between, { padding: 17, gap: 8 }]}><Txt style={[s.label, { flexShrink: 1 }]}>Monthly flexible spending</Txt>
-      <Txt style={[s.number, { color: preview.flex < 0 ? c.error : c.purple, fontSize: 20 }]}>{money(preview.flex)}</Txt></View>
+      <Txt style={[s.number, { color: preview.flex < 0 ? c.error : preview.flex > 0 ? c.green : c.ink, fontSize: 20 }]}>{money(preview.flex)}</Txt></View>
     {!!(issue || error) && <Txt style={{ color: c.error, lineHeight: 19 }}>{issue || error}</Txt>}
     <Action onPress={submit} disabled={busy}>{busy ? "Saving…" : "Save monthly plan"}</Action>
     <Action tone="soft" onPress={onCancel} disabled={busy}>Cancel</Action>

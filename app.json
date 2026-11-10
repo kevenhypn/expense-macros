@@ -9,7 +9,7 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#f7f7fb"
+      "backgroundColor": "#f5f6f5"
     },
     "ios": {
       "supportsTablet": true,
@@ -18,7 +18,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#5740dc",
+        "backgroundColor": "#08714f",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
       "package": "com.kevenhypn.expensemacros",

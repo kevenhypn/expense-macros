@@ -5,25 +5,32 @@ import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { ArrowDownLeft, BusFront, Clapperboard, Ellipsis, Moon, PiggyBank, ReceiptText, ShoppingBag, Sun, Utensils } from "lucide-react-native";
 import type { TransactionCategory } from "../types";
 
+const heroColors = {
+  onHero: "#f5f7f6", heroMuted: "#b4beb8", heroPill: "#303a34", heroLine: "#36473e",
+  heroGreen: "#6ee7a8", heroWarning: "#fbbf68", heroError: "#ff8585",
+};
+
 const light = {
-  bg: "#f7f7fb", surface: "#ffffff", ink: "#18182d", muted: "#606177", faint: "#73748a",
-  border: "#e7e7f0", purple: "#5740dc", soft: "#eeebff", hero: "#211c45",
-  lime: "#d7fa86", error: "#ad3156", green: "#247053", primary: "#5740dc", onPrimary: "#ffffff",
-  onHero: "#ffffff", danger: "#fce8ef", track: "#eeedf5", shade: "rgba(24, 20, 48, 0.52)",
+  ...heroColors,
+  bg: "#f5f6f5", surface: "#ffffff", ink: "#161a18", muted: "#565f5a", faint: "#646f68",
+  border: "#dfe5e1", accent: "#08714f", soft: "#e3f2e9", hero: "#18221d",
+  error: "#b42326", green: "#08714f", warning: "#935307", primary: "#08714f", onPrimary: "#ffffff",
+  danger: "#fce9e9", track: "#e6ebe8", shade: "rgba(15, 20, 17, 0.52)",
 };
 
 const dark: typeof light = {
-  bg: "#11111b", surface: "#1a1a2a", ink: "#f4f2ff", muted: "#c1bed4", faint: "#aaa6bf",
-  border: "#35334a", purple: "#c0b1ff", soft: "#30264e", hero: "#29214a",
-  lime: "#d7fa86", error: "#ffabc4", green: "#93ddba", primary: "#654ce7", onPrimary: "#ffffff",
-  onHero: "#ffffff", danger: "#462539", track: "#36334b", shade: "rgba(8, 7, 17, 0.7)",
+  ...heroColors,
+  bg: "#0a0a0a", surface: "#161616", ink: "#f4f5f4", muted: "#b7bdb9", faint: "#a4ada7",
+  border: "#2c302e", accent: "#59dfa0", soft: "#173226", hero: "#17201b",
+  error: "#ff8585", green: "#59dfa0", warning: "#fbbf68", primary: "#08714f", onPrimary: "#ffffff",
+  danger: "#3f2324", track: "#2b322e", shade: "rgba(5, 7, 6, 0.7)",
 };
 
 const lightCategories = {
   Food: { icon: Utensils, bg: "#fff0e0", color: "#9b4d19", bar: "#eea063" },
-  Shopping: { icon: ShoppingBag, bg: "#eee9ff", color: "#6340be", bar: "#9c83eb" },
-  Transport: { icon: BusFront, bg: "#e4efff", color: "#3561a6", bar: "#78a9f5" },
-  Entertainment: { icon: Clapperboard, bg: "#ffe8f2", color: "#9c3971", bar: "#e887b5" },
+  Shopping: { icon: ShoppingBag, bg: "#e5eef8", color: "#315c8c", bar: "#739fd1" },
+  Transport: { icon: BusFront, bg: "#e1f2f5", color: "#256675", bar: "#6cb9c8" },
+  Entertainment: { icon: Clapperboard, bg: "#f3eddf", color: "#755b23", bar: "#bda26a" },
   Other: { icon: Ellipsis, bg: "#ebedf3", color: "#53596d", bar: "#9da2b4" },
   Bills: { icon: ReceiptText, bg: "#fde9e9", color: "#9c3e4a", bar: "#ed8b90" },
   Savings: { icon: PiggyBank, bg: "#ddf4ea", color: "#28644f", bar: "#6dbfa0" },
@@ -32,9 +39,9 @@ const lightCategories = {
 
 const darkCategories: typeof lightCategories = {
   Food: { ...lightCategories.Food, bg: "#402c25", color: "#ffba87" },
-  Shopping: { ...lightCategories.Shopping, bg: "#352950", color: "#ceb5ff" },
-  Transport: { ...lightCategories.Transport, bg: "#263553", color: "#a9caff" },
-  Entertainment: { ...lightCategories.Entertainment, bg: "#44273d", color: "#f9aed7" },
+  Shopping: { ...lightCategories.Shopping, bg: "#213247", color: "#a9caff" },
+  Transport: { ...lightCategories.Transport, bg: "#1c3438", color: "#93d8e4" },
+  Entertainment: { ...lightCategories.Entertainment, bg: "#3c3221", color: "#e5c78d" },
   Other: { ...lightCategories.Other, bg: "#313247", color: "#ced0e7" },
   Bills: { ...lightCategories.Bills, bg: "#432936", color: "#ffabb8" },
   Savings: { ...lightCategories.Savings, bg: "#203c36", color: "#9ae4c9" },
@@ -103,7 +110,7 @@ export function ThemeToggle() {
   const Icon = isDark ? Sun : Moon;
   return <IconButton label={isDark ? "Switch to light mode" : "Switch to dark mode"}
     onPress={toggle} style={{ backgroundColor: c.soft }}>
-    <Icon size={19} color={c.purple} />
+    <Icon size={19} color={c.accent} />
   </IconButton>;
 }
 
@@ -118,7 +125,7 @@ export function Action({ children, onPress, tone = "primary", disabled, label, s
 }) {
   const { c } = useTheme();
   const bg = { primary: c.primary, soft: c.soft, plain: c.surface, danger: c.danger }[tone];
-  const fg = { primary: c.onPrimary, soft: c.purple, plain: c.ink, danger: c.error }[tone];
+  const fg = { primary: c.onPrimary, soft: c.accent, plain: c.ink, danger: c.error }[tone];
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
     style={({ pressed }) => [{ minHeight: 46, alignItems: "center", justifyContent: "center", borderRadius: 13,
@@ -141,9 +148,9 @@ export function Brand({ small = false }: { small?: boolean }) {
   return <View style={[s.row, { gap: 9 }]}>
     <View style={{ backgroundColor: c.primary, borderRadius: 11, width: 34, height: 34, alignItems: "center", justifyContent: "center" }}>
       <Svg width={22} height={22} viewBox="0 0 28 28">
-        <Rect x={4} y={15} width={4.5} height={9} rx={2} fill="#c7b8ff" />
+        <Rect x={4} y={15} width={4.5} height={9} rx={2} fill="#ade5c8" />
         <Rect x={11.75} y={10} width={4.5} height={14} rx={2} fill="#ffffff" />
-        <Rect x={19.5} y={4} width={4.5} height={20} rx={2} fill={c.lime} />
+        <Rect x={19.5} y={4} width={4.5} height={20} rx={2} fill={c.heroGreen} />
       </Svg>
     </View>
     <Txt style={{ fontSize: small ? 17 : 19, fontWeight: "800", letterSpacing: -0.65 }}>Expense Macros</Txt>
@@ -166,25 +173,26 @@ export function Badge({ category, size = 40 }: { category: TransactionCategory; 
   </View>;
 }
 
-export function Arc({ percent, over, size }: { percent: number | null; over: boolean; size: number }) {
+export function Arc({ percent, color, size }: { percent: number | null; color: string; size: number }) {
   const { c } = useTheme();
   const sweep = 2 * Math.PI * 49;
   return <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
     accessibilityLabel={percent === null ? "No allowance" : `${percent}% of allowance used`}>
     <Svg width={size} height={size} viewBox="0 0 120 120" style={StyleSheet.absoluteFill}>
-      <Circle cx={60} cy={60} r={49} fill="none" stroke="#474066" strokeWidth={9} />
-      {percent !== null && percent > 0 && <Circle cx={60} cy={60} r={49} fill="none" stroke={over ? "#ffc0d2" : c.lime} strokeWidth={9}
+      <Circle cx={60} cy={60} r={49} fill="none" stroke={c.heroLine} strokeWidth={9} />
+      {percent !== null && percent > 0 && <Circle cx={60} cy={60} r={49} fill="none" stroke={color} strokeWidth={9}
         strokeLinecap="round" strokeDasharray={`${sweep * Math.min(percent, 100) / 100} ${sweep}`} transform="rotate(-90 60 60)" />}
     </Svg>
-    <Txt style={{ fontSize: size * 0.23, color: "#fff", fontWeight: "800", letterSpacing: -1 }}>{percent === null ? "—" : percent > 999 ? "999+%" : `${percent}%`}</Txt>
-    <Txt style={{ color: "#d8d2ec", fontSize: 10, fontWeight: "600" }}>{percent === null ? "no target" : "used"}</Txt>
+    <Txt style={{ fontSize: size * 0.23, color: c.onHero, fontWeight: "800", letterSpacing: -1 }}>{percent === null ? "—" : percent > 999 ? "999+%" : `${percent}%`}</Txt>
+    <Txt style={{ color: c.heroMuted, fontSize: 10, fontWeight: "600" }}>{percent === null ? "no target" : "used"}</Txt>
   </View>;
 }
 
 export function Contours() {
+  const { c } = useTheme();
   return <View pointerEvents="none" style={{ position: "absolute", right: -43, top: -82, opacity: 0.61 }}>
     <Svg width={290} height={280} viewBox="0 0 290 280">
-      <Path d="M21 249C92 237 46 153 124 129S182 57 158 0M47 266C120 253 74 166 150 145S215 70 183 0M73 280C146 267 103 182 177 158S241 79 212 0M108 280C171 263 133 198 203 174S268 91 240 0M144 280C194 262 167 218 228 190S290 100 267 0M173 280C220 261 198 235 255 206S319 114 297 0" stroke="#55467e" strokeWidth="1" fill="none" />
+      <Path d="M21 249C92 237 46 153 124 129S182 57 158 0M47 266C120 253 74 166 150 145S215 70 183 0M73 280C146 267 103 182 177 158S241 79 212 0M108 280C171 263 133 198 203 174S268 91 240 0M144 280C194 262 167 218 228 190S290 100 267 0M173 280C220 261 198 235 255 206S319 114 297 0" stroke={c.heroLine} strokeWidth="1" fill="none" />
     </Svg>
   </View>;
 }

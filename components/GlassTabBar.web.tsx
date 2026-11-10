@@ -69,7 +69,7 @@ export function GlassTabBar<Name extends string>({ tabs, active, bottom, height,
         style={{ width: `${100 / tabs.length}%`, transform: `translateX(${(dragPosition ?? selected) * 100}%)` }} />
       {tabs.map(({ name, icon: Icon }, index) => <button key={name} type="button" role="tab"
         aria-selected={name === active} tabIndex={name === active ? 0 : -1}
-        className="glass-tab-button" style={index === highlighted ? { color: c.purple } : undefined}
+        className="glass-tab-button" style={index === highlighted ? { color: c.accent } : undefined}
         onKeyDown={event => navigateWithKey(event, index)}
         onClick={event => {
           if (event.detail !== 0 && suppressClick.current) return;
