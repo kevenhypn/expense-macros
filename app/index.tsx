@@ -4,7 +4,7 @@ import { ArrowRight, CalendarDays, FlaskConical, List, LockKeyhole, Plus, Slider
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Activity, Allowance, Today } from "../components/dashboard";
 import { PlanForm, PlanSummary, TransactionForm } from "../components/forms";
-import { Action, Brand, IconButton, Txt, c, s } from "../components/ui";
+import { Action, Brand, IconButton, ThemeToggle, Txt, useTheme } from "../components/ui";
 import { budgetFor, isoDate } from "../lib/budget";
 import { sampleData } from "../lib/demo";
 import { loadData, saveConfig, saveTransactions } from "../lib/storage";
@@ -19,6 +19,7 @@ type Screen = (typeof tabs)[number]["name"];
 type Store = Awaited<ReturnType<typeof loadData>>;
 
 function Tab({ item, selected, desktop, onPress }: { item: (typeof tabs)[number]; selected: boolean; desktop: boolean; onPress: () => void }) {
+  const { c } = useTheme();
   const Icon = item.icon;
   return <Pressable accessibilityRole="tab" accessibilityState={{ selected }} onPress={onPress}
     style={({ pressed }) => ({ flex: desktop ? undefined : 1, flexDirection: desktop ? "row" : "column",
@@ -30,6 +31,7 @@ function Tab({ item, selected, desktop, onPress }: { item: (typeof tabs)[number]
 }
 
 function Welcome({ compact, onStart, onDemo }: { compact: boolean; onStart: () => void; onDemo: () => void }) {
+  const { c, s } = useTheme();
   return <>
     <View style={{ gap: 10, marginTop: compact ? 10 : 22, maxWidth: 600 }}>
       <View style={{ alignSelf: "flex-start", backgroundColor: c.soft, borderRadius: 22, paddingVertical: 7, paddingHorizontal: 11 }}>
@@ -39,7 +41,7 @@ function Welcome({ compact, onStart, onDemo }: { compact: boolean; onStart: () =
       <Txt style={[s.muted, { maxWidth: 460, fontSize: 16, lineHeight: 23 }]}>Set a monthly plan, get a daily target, and log spending as you go.</Txt>
     </View>
     <View style={{ flexDirection: compact ? "column" : "row", gap: 10 }}>
-      <Action onPress={onStart} label="Create my plan"><Txt style={{ color: c.white, fontWeight: "700" }}>Create my plan</Txt><ArrowRight size={16} color={c.white} /></Action>
+      <Action onPress={onStart} label="Create my plan"><Txt style={{ color: c.onPrimary, fontWeight: "700" }}>Create my plan</Txt><ArrowRight size={16} color={c.onPrimary} /></Action>
       <Action tone="soft" onPress={onDemo}>Explore with sample data</Action>
     </View>
     <View style={{ gap: 8, marginTop: 3 }}>
@@ -52,6 +54,7 @@ function Welcome({ compact, onStart, onDemo }: { compact: boolean; onStart: () =
 }
 
 export default function ExpenseMacros() {
+  const { c, s } = useTheme();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const desktop = width >= 970;
@@ -180,23 +183,29 @@ export default function ExpenseMacros() {
 
   return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]}>
     <View style={{ flex: 1, flexDirection: desktop && showTabs ? "row" : "column" }}>
-      {desktop && showTabs && <View style={{ width: 222, backgroundColor: c.white, borderRightWidth: 1, borderColor: c.border,
+      {desktop && showTabs && <View style={{ width: 222, backgroundColor: c.surface, borderRightWidth: 1, borderColor: c.border,
         padding: 17, paddingTop: 24, paddingBottom: 20 + insets.bottom, gap: 23 }}>
         <Brand small />
         <View accessibilityRole="tablist" style={{ gap: 5 }}>
           <Txt style={[s.eyebrow, { marginBottom: 7, marginLeft: 10 }]}>WORKSPACE</Txt>
           {tabs.map(item => <Tab key={item.name} item={item} selected={screen === item.name} desktop onPress={() => jump(item.name)} />)}
         </View>
-        <Action label="Log a transaction" onPress={logEntry}><Plus size={18} color={c.white} /><Txt style={{ color: c.white, fontWeight: "700" }}>Log transaction</Txt></Action>
-        <View style={[s.row, { marginTop: "auto", gap: 8 }]}><LockKeyhole size={14} color={c.faint} /><Txt style={{ color: c.muted, fontSize: 11 }}>Stored on this device</Txt></View>
+        <Action label="Log a transaction" onPress={logEntry}><Plus size={18} color={c.onPrimary} /><Txt style={{ color: c.onPrimary, fontWeight: "700" }}>Log transaction</Txt></Action>
+        <View style={[s.between, { marginTop: "auto" }]}>
+          <View style={[s.row, { gap: 8 }]}><LockKeyhole size={14} color={c.faint} /><Txt style={{ color: c.muted, fontSize: 11 }}>Stored on this device</Txt></View>
+          <ThemeToggle />
+        </View>
       </View>}
       <View style={{ flex: 1 }}>
-        {(!desktop || !showTabs) && <View style={{ backgroundColor: c.white, borderBottomWidth: 1, borderColor: c.border }}>
+        {(!desktop || !showTabs) && <View style={{ backgroundColor: c.surface, borderBottomWidth: 1, borderColor: c.border }}>
           <View style={[s.between, { minHeight: 62, paddingHorizontal: compact ? 16 : 26, width: "100%", maxWidth: 940, alignSelf: "center" }]}>
             <Brand small={compact} />
-            {showTabs && <IconButton label="Log a transaction" onPress={logEntry} style={{ backgroundColor: c.purple }}>
-              <Plus size={23} color={c.white} />
-            </IconButton>}
+            <View style={[s.row, { gap: 8 }]}>
+              <ThemeToggle />
+              {showTabs && <IconButton label="Log a transaction" onPress={logEntry} style={{ backgroundColor: c.primary }}>
+                <Plus size={23} color={c.onPrimary} />
+              </IconButton>}
+            </View>
           </View>
         </View>}
         <ScrollView ref={scroller} keyboardShouldPersistTaps="handled" contentContainerStyle={{
@@ -223,12 +232,12 @@ export default function ExpenseMacros() {
         {!!notice && !form && !editingPlan && <View accessibilityLiveRegion="polite" style={[s.between, {
           alignSelf: "center", marginHorizontal: 15, marginBottom: 7, backgroundColor: c.hero, paddingLeft: 14, borderRadius: 13, gap: 9, minHeight: 43,
         }]}>
-          <Txt style={{ color: c.white, fontWeight: "600", fontSize: 13 }}>{notice.message}</Txt>
+          <Txt style={{ color: c.onHero, fontWeight: "600", fontSize: 13 }}>{notice.message}</Txt>
           {notice.deleted && <Action tone="soft" onPress={undoDelete} disabled={busy} style={{ minHeight: 36 }}>Undo</Action>}
-          <IconButton label="Dismiss message" onPress={() => setNotice(null)} disabled={busy}><X size={16} color={c.white} /></IconButton>
+          <IconButton label="Dismiss message" onPress={() => setNotice(null)} disabled={busy}><X size={16} color={c.onHero} /></IconButton>
         </View>}
         {!desktop && showTabs && <View accessibilityRole="tablist" style={{
-          flexDirection: "row", gap: 7, backgroundColor: c.white, borderTopWidth: 1, borderColor: c.border,
+          flexDirection: "row", gap: 7, backgroundColor: c.surface, borderTopWidth: 1, borderColor: c.border,
           paddingTop: 6, paddingHorizontal: 13, paddingBottom: Math.max(insets.bottom, 7),
         }}>
           {tabs.map(item => <Tab key={item.name} item={item} desktop={false} selected={screen === item.name} onPress={() => jump(item.name)} />)}

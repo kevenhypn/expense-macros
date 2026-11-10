@@ -3,9 +3,10 @@ import { Platform, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { CalendarDays } from "lucide-react-native";
 import { dateLabel, isoDate, localDate } from "../lib/budget";
-import { Action, Txt, c, s } from "./ui";
+import { Action, Txt, useTheme } from "./ui";
 
 export function DateField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { c, s, scheme } = useTheme();
   const [visible, setVisible] = useState(false);
   return <View style={{ gap: 7 }}>
     <Txt style={s.label}>Date</Txt>
@@ -13,7 +14,7 @@ export function DateField({ value, onChange }: { value: string; onChange: (value
       <CalendarDays size={16} color={c.purple} /><Txt style={[s.label, { color: c.purple }]}>{dateLabel(value, { dateStyle: "medium" })}</Txt>
     </Action>
     {visible && <DateTimePicker value={localDate(value)} maximumDate={localDate(isoDate())} mode="date"
-      display={Platform.OS === "ios" ? "spinner" : "default"} themeVariant="light" onChange={(_, date) => {
+      display={Platform.OS === "ios" ? "spinner" : "default"} themeVariant={scheme} onChange={(_, date) => {
         if (Platform.OS !== "ios") setVisible(false);
         if (date) onChange(isoDate(date));
       }} />}

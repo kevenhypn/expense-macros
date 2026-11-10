@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { BudgetConfig, Transaction, TransactionCategory } from "../types";
 import { amountValue, expenseCategories, isoDate, isDate, money, planTotals } from "../lib/budget";
 import { generateId } from "../lib/storage";
-import { Action, Field, IconButton, Txt, c, cat, s } from "./ui";
+import { Action, Field, IconButton, Txt, useTheme } from "./ui";
 
 import { DateField } from "./DateField";
 
@@ -20,6 +20,7 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
   entry?: Transaction; initialDate: string; busy: boolean; error?: string; onClose: () => void;
   onSave: (entry: Transaction) => void; onDelete: (entry: Transaction) => void;
 }) {
+  const { c, s, cat } = useTheme();
   const [kind, setKind] = useState<Kind>(entry?.category === "Income" ? "income" : entry && entry.amount > 0 ? "refund" : "expense");
   const [category, setCategory] = useState<TransactionCategory>(entry && entry.category !== "Income" ? entry.category : "Food");
   const [amount, setAmount] = useState(entry ? String(Math.abs(entry.amount)) : "");
@@ -41,8 +42,8 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
   return <Modal transparent visible animationType={Platform.OS === "web" ? "none" : "fade"} onRequestClose={onClose}>
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, alignItems: "center", justifyContent: width >= 650 ? "center" : "flex-end" }}>
       <Pressable onPress={onClose} accessibilityElementsHidden importantForAccessibility="no"
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: "rgba(24, 20, 48, 0.52)" }]} />
-      <View accessibilityViewIsModal style={{ width: "100%", maxWidth: 500, maxHeight: "96%", flexShrink: 1, backgroundColor: c.white,
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: c.shade }]} />
+      <View accessibilityViewIsModal style={{ width: "100%", maxWidth: 500, maxHeight: "96%", flexShrink: 1, backgroundColor: c.surface,
         borderTopLeftRadius: 26, borderTopRightRadius: 26, borderBottomLeftRadius: width >= 650 ? 26 : 0, borderBottomRightRadius: width >= 650 ? 26 : 0 }}>
         <View style={[s.between, { paddingHorizontal: 20, paddingTop: 13, paddingBottom: 8 }]}>
           <View style={{ gap: 3 }}><Txt style={s.eyebrow}>YOUR MONEY LOG</Txt><Txt style={s.title}>{entry ? "Edit transaction" : "Log a transaction"}</Txt></View>
@@ -87,13 +88,13 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
   </Modal>;
 }
 
-const planItems = [
-  { key: "income", label: "Take-home income", icon: CircleDollarSign, bg: c.soft, color: c.purple },
-  { key: "bills", label: "Recurring bills", icon: ReceiptText, bg: cat.Bills.bg, color: cat.Bills.color },
-  { key: "savings", label: "Savings target", icon: PiggyBank, bg: cat.Savings.bg, color: cat.Savings.color },
-] as const;
-
 export function PlanSummary({ config, onEdit }: { config: BudgetConfig; onEdit: () => void }) {
+  const { c, s, cat } = useTheme();
+  const planItems = [
+    { key: "income", label: "Take-home income", icon: CircleDollarSign, bg: c.soft, color: c.purple },
+    { key: "bills", label: "Recurring bills", icon: ReceiptText, bg: cat.Bills.bg, color: cat.Bills.color },
+    { key: "savings", label: "Savings target", icon: PiggyBank, bg: cat.Savings.bg, color: cat.Savings.color },
+  ] as const;
   const values = planTotals(config);
   return <>
     <View style={{ gap: 4 }}><Txt style={s.eyebrow}>SET YOUR TARGETS</Txt>
@@ -101,7 +102,7 @@ export function PlanSummary({ config, onEdit }: { config: BudgetConfig; onEdit: 
       <Txt style={s.muted}>Set money aside for bills and savings before you spend.</Txt></View>
     <View style={{ backgroundColor: c.hero, padding: 22, borderRadius: 24, gap: 6 }}>
       <Txt style={[s.eyebrow, { color: "#dcd1ff" }]}>FLEXIBLE SPENDING TARGET</Txt>
-      <Txt style={[s.number, { color: c.white, fontSize: 37, letterSpacing: -1.5 }]}>{money(values.flex)}</Txt>
+      <Txt style={[s.number, { color: c.onHero, fontSize: 37, letterSpacing: -1.5 }]}>{money(values.flex)}</Txt>
       <Txt style={{ color: "#e0d9ef", lineHeight: 19, fontSize: 13 }}>Monthly income minus planned bills and savings.</Txt>
     </View>
     <View style={[s.panel, { paddingHorizontal: 16 }]}>
@@ -128,6 +129,7 @@ export function PlanSummary({ config, onEdit }: { config: BudgetConfig; onEdit: 
 export function PlanForm({ config, onSave, onCancel, busy, error }: {
   config: BudgetConfig | null; onSave: (config: BudgetConfig) => void; onCancel: () => void; busy: boolean; error?: string;
 }) {
+  const { c, s } = useTheme();
   const [income, setIncome] = useState(config ? String(config.monthlyIncome) : "");
   const [bills, setBills] = useState(() => config?.bills.map(bill => ({ ...bill, amount: String(bill.amount) })) ?? []);
   const [mode, setMode] = useState(config?.savingsGoal.mode ?? "fixed");

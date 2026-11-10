@@ -6,7 +6,7 @@ import {
 } from "lucide-react-native";
 import type { Transaction } from "../types";
 import { budgetFor, dateLabel, isoDate, money, moveDay, moveMonth, weekDates } from "../lib/budget";
-import { Action, Arc, Badge, Contours, IconButton, Txt, c, cat, s } from "./ui";
+import { Action, Arc, Badge, Contours, IconButton, Txt, useTheme } from "./ui";
 
 type Budget = ReturnType<typeof budgetFor>;
 const dayName = (date: string) => dateLabel(date, { weekday: "short", month: "short", day: "numeric" });
@@ -16,6 +16,7 @@ const percent = (used: number, target: number) => target > 0 ? Math.max(0, Math.
 export function DateStrip({ date, today, entries, onDate }: {
   date: string; today: string; entries: Transaction[]; onDate: (date: string) => void;
 }) {
+  const { c, s } = useTheme();
   const week = weekDates(date);
   const first = week[0];
   const last = week[6];
@@ -35,7 +36,7 @@ export function DateStrip({ date, today, entries, onDate }: {
         return <Pressable key={day} onPress={() => onDate(day)} disabled={day > today} accessibilityRole="button"
           accessibilityState={{ selected, disabled: day > today }} accessibilityLabel={dayName(day)}
           style={({ pressed }) => ({ flex: 1, minHeight: 61, gap: 3, justifyContent: "center", alignItems: "center", borderRadius: 13,
-            backgroundColor: selected ? c.purple : day === today ? c.soft : "transparent", opacity: day > today ? 0.48 : pressed ? 0.7 : 1 })}>
+            backgroundColor: selected ? c.primary : day === today ? c.soft : "transparent", opacity: day > today ? 0.48 : pressed ? 0.7 : 1 })}>
           <Txt style={{ color: selected ? "#eee9ff" : c.muted, fontSize: 10, fontWeight: "700" }}>{dateLabel(day, { weekday: "short" })}</Txt>
           <Txt style={{ color: selected ? "#fff" : c.ink, fontSize: 16, fontWeight: "800" }}>{Number(day.slice(-2))}</Txt>
           <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: logged ? selected ? c.lime : c.purple : "transparent" }} />
@@ -48,6 +49,7 @@ export function DateStrip({ date, today, entries, onDate }: {
 export function Allowance({ left, spent, limit, rollover, compact, isToday = true }: {
   left: number; spent: number; limit: number; rollover: boolean; compact: boolean; isToday?: boolean;
 }) {
+  const { c, s } = useTheme();
   const over = left < 0;
   return <View style={{ backgroundColor: c.hero, borderRadius: 26, overflow: "hidden", padding: compact ? 20 : 26, gap: 17 }}>
     <Contours />
@@ -76,6 +78,7 @@ export function Allowance({ left, spent, limit, rollover, compact, isToday = tru
 }
 
 export function MonthCard({ data, date, onPress }: { data: Budget; date: string; onPress?: () => void }) {
+  const { c, s } = useTheme();
   const used = percent(data.monthSpent, data.monthBudget);
   const over = data.monthLeft < 0;
   const bar = Math.min(100, used ?? (over ? 100 : 0));
@@ -94,7 +97,7 @@ export function MonthCard({ data, date, onPress }: { data: Budget; date: string;
       </View>
       <Txt style={{ color: c.muted, fontSize: 11 }}>{used === null ? "No allowance" : `${used}% used`}</Txt>
     </View>
-    <View style={{ height: 7, backgroundColor: "#eeedf5", borderRadius: 8, overflow: "hidden" }}>
+    <View style={{ height: 7, backgroundColor: c.track, borderRadius: 8, overflow: "hidden" }}>
       <View style={{ height: 7, width: `${bar}%`, backgroundColor: over ? c.error : c.purple, borderRadius: 8 }} />
     </View>
     <View style={s.between}><Txt style={{ color: c.muted, fontSize: 11 }}>Net spent {money(data.monthSpent)}</Txt><Txt style={{ color: c.muted, fontSize: 11 }}>Budget {money(data.monthBudget)}</Txt></View>
@@ -107,6 +110,7 @@ export function MonthCard({ data, date, onPress }: { data: Budget; date: string;
 export function Entries({ items, emptyTitle, emptyText, add, edit, showDate = false }: {
   items: Transaction[]; emptyTitle: string; emptyText: string; add?: () => void; edit: (tx: Transaction) => void; showDate?: boolean;
 }) {
+  const { c, s } = useTheme();
   if (!items.length) return <View style={[s.panel, { padding: 21, alignItems: "center", gap: 7 }]}>
     <View style={{ padding: 10, borderRadius: 13, backgroundColor: c.soft }}><List size={20} color={c.purple} /></View>
     <Txt style={s.label}>{emptyTitle}</Txt><Txt style={[s.muted, { textAlign: "center" }]}>{emptyText}</Txt>
@@ -131,6 +135,7 @@ export function Entries({ items, emptyTitle, emptyText, add, edit, showDate = fa
 }
 
 function Breakdown({ data }: { data: Budget }) {
+  const { c, s, cat } = useTheme();
   const categories = data.categories.filter(row => row.amount !== 0).sort((a, b) => b.amount - a.amount);
   const total = categories.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
   return <View style={[s.panel, { padding: 17, gap: 15 }]}>
@@ -151,6 +156,7 @@ export function Today({ data, transactions, date, today, compact, wide, rollover
   data: Budget; transactions: Transaction[]; date: string; today: string; compact: boolean; wide: boolean; rollover: boolean;
   onDate: (date: string) => void; add: () => void; edit: (tx: Transaction) => void; activity: () => void;
 }) {
+  const { c, s } = useTheme();
   const isToday = date === today;
   return <>
     <View style={[s.between, { gap: 10 }]}>
@@ -182,6 +188,7 @@ const filters = ["All", "Expenses", "Refunds", "Income"] as const;
 export function Activity({ data, date, wide, onDate, edit, add }: {
   data: Budget; date: string; wide: boolean; onDate: (value: string) => void; edit: (tx: Transaction) => void; add: () => void;
 }) {
+  const { c, s } = useTheme();
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
   const sorted = data.entries.filter(tx => filter === "All" || (filter === "Income" ? tx.category === "Income"
     : filter === "Refunds" ? tx.category !== "Income" && tx.amount > 0 : tx.amount < 0))
@@ -203,7 +210,7 @@ export function Activity({ data, date, wide, onDate, edit, add }: {
         <View style={s.between}><Txt style={s.title}>Transactions</Txt><IconButton label="Add transaction for selected month" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.purple} /></IconButton></View>
         <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
           {filters.map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: item === filter }} key={item}
-            onPress={() => setFilter(item)} style={{ backgroundColor: item === filter ? c.soft : c.white, minHeight: 44, justifyContent: "center",
+            onPress={() => setFilter(item)} style={{ backgroundColor: item === filter ? c.soft : c.surface, minHeight: 44, justifyContent: "center",
               borderColor: item === filter ? c.soft : c.border, borderWidth: 1, borderRadius: 12, paddingHorizontal: 10 }}>
             <Txt style={{ color: item === filter ? c.purple : c.muted, fontSize: 12, fontWeight: "700" }}>{item}</Txt>
           </Pressable>)}
