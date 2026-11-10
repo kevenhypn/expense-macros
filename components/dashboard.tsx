@@ -125,8 +125,9 @@ export function Entries({ items, emptyTitle, emptyText, add, edit, showDate = fa
       <View style={{ flex: 1, gap: 3 }}>
         <Txt lines={1} style={s.label}>{tx.note?.trim() || (tx.category === "Income" ? "Extra income" : tx.category)}</Txt>
         <Txt lines={1} style={{ color: c.muted, fontSize: 11 }}>
-          {tx.category}{tx.amount > 0 && tx.category !== "Income" ? " · Refund" : ""}{showDate ? ` · ${dayName(tx.date)}` : ""}
+          {tx.category}{tx.amount > 0 && tx.category !== "Income" ? " · Refund" : ""}{showDate ? ` · ${dayName(tx.date)}` : ""}{tx.pending ? " · Pending" : ""}
         </Txt>
+        {!!tx.account && <Txt lines={1} style={{ color: c.muted, fontSize: 11 }}>{tx.account}</Txt>}
       </View>
       <Txt style={[s.number, { color: tx.amount > 0 ? c.green : c.ink, fontSize: 14 }]}>{tx.amount > 0 ? "+" : "−"}{money(Math.abs(tx.amount))}</Txt>
       <ChevronRight size={15} color={c.faint} />
@@ -184,14 +185,20 @@ export function Today({ data, transactions, date, today, compact, wide, rollover
   </>;
 }
 
-const filters = ["All", "Expenses", "Refunds", "Income"] as const;
-export function Activity({ data, date, wide, onDate, edit, add }: {
-  data: Budget; date: string; wide: boolean; onDate: (value: string) => void; edit: (tx: Transaction) => void; add: () => void;
+const filters = ["All", "Expenses", "Refunds", "Income", "Pending"] as const;
+export function Activity({ data, date, wide, onDate, edit, add, openImport }: {
+  data: Budget; date: string; wide: boolean; onDate: (value: string) => void; edit: (tx: Transaction) => void; add: () => void; openImport: () => void;
 }) {
   const { c, s } = useTheme();
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
-  const sorted = data.entries.filter(tx => filter === "All" || (filter === "Income" ? tx.category === "Income"
-    : filter === "Refunds" ? tx.category !== "Income" && tx.amount > 0 : tx.amount < 0))
+  const sorted = data.entries.filter(tx => {
+    if (filter === "All") return true;
+    if (filter === "Pending") return !!tx.pending;
+    if (tx.pending) return false;
+    if (filter === "Income") return tx.category === "Income";
+    if (filter === "Refunds") return tx.category !== "Income" && tx.amount > 0;
+    return tx.amount < 0;
+  })
     .sort((a, b) => b.date.localeCompare(a.date));
   return <>
     <View style={{ gap: 4 }}><Txt style={s.eyebrow}>THE BIG PICTURE</Txt><Txt style={{ fontSize: 36, fontWeight: "800", letterSpacing: -1.5 }}>Activity</Txt>
@@ -207,7 +214,13 @@ export function Activity({ data, date, wide, onDate, edit, add }: {
         <Breakdown data={data} />
       </View>
       <View style={{ flex: wide ? 1.45 : undefined, minWidth: 0, gap: 10 }}>
-        <View style={s.between}><Txt style={s.title}>Transactions</Txt><IconButton label="Add transaction for selected month" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.purple} /></IconButton></View>
+        <View style={s.between}>
+          <Txt style={s.title}>Transactions</Txt>
+          <View style={[s.row, { gap: 6 }]}>
+            <Action onPress={openImport} tone="soft">Import</Action>
+            <IconButton label="Add transaction for selected month" onPress={add} style={{ backgroundColor: c.soft }}><Plus size={20} color={c.purple} /></IconButton>
+          </View>
+        </View>
         <View style={{ flexDirection: "row", gap: 5, flexWrap: "wrap" }}>
           {filters.map(item => <Pressable accessibilityRole="button" accessibilityState={{ selected: item === filter }} key={item}
             onPress={() => setFilter(item)} style={{ backgroundColor: item === filter ? c.soft : c.surface, minHeight: 44, justifyContent: "center",

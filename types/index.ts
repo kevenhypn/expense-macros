@@ -14,6 +14,8 @@ export type Transaction = {
   amount: number; // IN positive, OUT negative
   category: TransactionCategory;
   note?: string;
+  account?: string;
+  pending?: boolean;
   isSystem?: boolean;
 };
 

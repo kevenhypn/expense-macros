@@ -75,6 +75,7 @@ export function budgetFor(config: BudgetConfig, transactions: Transaction[], dat
   let daySpent = 0;
   let priorNet = 0;
   for (const tx of entries) {
+    if (tx.pending) continue;
     const signed = cents(tx.amount);
     if (tx.category === "Income") earned += signed;
     else {

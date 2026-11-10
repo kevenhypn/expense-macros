@@ -24,6 +24,7 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
   const [kind, setKind] = useState<Kind>(entry?.category === "Income" ? "income" : entry && entry.amount > 0 ? "refund" : "expense");
   const [category, setCategory] = useState<TransactionCategory>(entry && entry.category !== "Income" ? entry.category : "Food");
   const [amount, setAmount] = useState(entry ? String(Math.abs(entry.amount)) : "");
+  const [pending, setPending] = useState(entry?.pending ?? false);
   const [note, setNote] = useState(entry?.note ?? "");
   const [date, setDate] = useState(entry?.date ?? initialDate);
   const [issue, setIssue] = useState("");
@@ -36,7 +37,8 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
     if (!isDate(date) || date > isoDate()) { setIssue("Choose a valid date on or before today."); return; }
     setIssue("");
     onSave({ id: entry?.id ?? generateId(), amount: kind === "expense" ? -value : value, date,
-      category: kind === "income" ? "Income" : category, note: note.trim() || undefined });
+      category: kind === "income" ? "Income" : category, note: note.trim() || undefined,
+      account: entry?.account, pending: pending || undefined });
   }
 
   return <Modal transparent visible animationType={Platform.OS === "web" ? "none" : "fade"} onRequestClose={onClose}>
@@ -77,6 +79,11 @@ export function TransactionForm({ entry, initialDate, busy, error, onClose, onSa
           {kind === "expense" && (category === "Bills" || category === "Savings") &&
             <Txt style={[s.muted, { fontSize: 12 }]}>Log only amounts beyond what you already set aside in your plan.</Txt>}
           <DateField value={date} onChange={value => { setDate(value); setIssue(""); }} />
+          {entry?.pending !== undefined && <View style={s.between}>
+            <Txt style={s.label}>Pending transaction</Txt>
+            <Switch accessibilityLabel="Pending transaction" value={pending} onValueChange={setPending}
+              trackColor={{ true: c.primary }} />
+          </View>}
           {entry && <Action tone="danger" onPress={() => onDelete(entry)} disabled={busy}>Delete transaction</Action>}
         </ScrollView>
         <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 + insets.bottom, borderTopWidth: 1, borderColor: c.border, gap: 8 }}>

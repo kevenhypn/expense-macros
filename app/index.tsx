@@ -3,6 +3,7 @@ import { ActivityIndicator, AppState, Pressable, ScrollView, View, useWindowDime
 import { ArrowRight, CalendarDays, FlaskConical, List, LockKeyhole, Plus, SlidersHorizontal, X } from "lucide-react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Activity, Allowance, Today } from "../components/dashboard";
+import { TransactionImport } from "../components/TransactionImport";
 import { PlanForm, PlanSummary, TransactionForm } from "../components/forms";
 import { Action, Brand, IconButton, ThemeToggle, Txt, useTheme } from "../components/ui";
 import { budgetFor, isoDate } from "../lib/budget";
@@ -66,6 +67,7 @@ export default function ExpenseMacros() {
   const [stored, setStored] = useState<Store | null>(null);
   const [demo, setDemo] = useState<Store | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [editingPlan, setEditingPlan] = useState(false);
   const [form, setForm] = useState<{ initialDate: string; entry?: Transaction } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -108,6 +110,7 @@ export default function ExpenseMacros() {
   function jump(next: Screen) {
     setScreen(next);
     setEditingPlan(false);
+    setImporting(false);
     setSaveError("");
     scroller.current?.scrollTo({ y: 0, animated: false });
   }
@@ -147,6 +150,19 @@ export default function ExpenseMacros() {
       setBusy(false);
     }
   }
+  async function importEntries(incoming: Transaction[]) {
+    const existingIds = new Set(transactions.map(tx => tx.id));
+    const additions = incoming.filter(tx => !existingIds.has(tx.id));
+    if (additions.length === 0) {
+      setSaveError("These entries have already been imported.");
+      return;
+    }
+    if (await persist({ config: config ?? null, transactions: [...additions, ...transactions] }, "transactions")) {
+      setDate(additions.reduce((latest, tx) => tx.date > latest ? tx.date : latest, additions[0].date));
+      jump("Activity");
+      setNotice({ message: `${additions.length} transactions imported` });
+    }
+  }
   async function updateEntry(entry: Transaction) {
     const entries = form?.entry ? transactions.map(tx => tx.id === entry.id ? entry : tx) : [entry, ...transactions];
     if (await persist({ config: config ?? null, transactions: entries }, "transactions")) {
@@ -178,7 +194,7 @@ export default function ExpenseMacros() {
 
   const loggingSelectedDate = screen === "Today" || (screen === "Activity" && date.slice(0, 7) !== today.slice(0, 7));
   const logEntry = () => openEntry(undefined, loggingSelectedDate);
-  const showTabs = !!config && !editingPlan;
+  const showTabs = !!config && !editingPlan && !importing;
   const metrics = config ? budgetFor(config, transactions, date) : null;
 
   return <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }} edges={["top", "left", "right"]}>
@@ -221,15 +237,20 @@ export default function ExpenseMacros() {
             </View>}
             {!!stored && !config && !editingPlan && <Welcome compact={compact} onStart={changePlan} onDemo={() => { setDemo(sampleData(today)); setDate(today); jump("Today"); }} />}
             {editingPlan && <PlanForm config={config ?? null} busy={busy} error={saveError} onSave={updatePlan} onCancel={() => { setEditingPlan(false); setSaveError(""); }} />}
+            {importing && <TransactionImport busy={busy} error={saveError} onSave={importEntries} onCancel={() => jump("Activity")} />}
             {showTabs && metrics && config && (screen === "Today" ?
               <Today data={metrics} transactions={transactions} date={date} today={today} compact={compact} wide={wide}
                 rollover={!!config.rolloverUnspent} onDate={setDate} add={() => openEntry(undefined, true)} edit={openEntry} activity={() => jump("Activity")} /> :
               screen === "Activity" ? <Activity data={metrics} date={date} wide={wide} onDate={setDate}
-                add={logEntry} edit={openEntry} /> :
+                add={logEntry} edit={openEntry} openImport={() => {
+                  setSaveError("");
+                  setImporting(true);
+                  scroller.current?.scrollTo({ y: 0, animated: false });
+                }} /> :
               <PlanSummary config={config} onEdit={changePlan} />)}
           </View>
         </ScrollView>
-        {!!notice && !form && !editingPlan && <View accessibilityLiveRegion="polite" style={[s.between, {
+        {!!notice && !form && !editingPlan && !importing && <View accessibilityLiveRegion="polite" style={[s.between, {
           alignSelf: "center", marginHorizontal: 15, marginBottom: 7, backgroundColor: c.hero, paddingLeft: 14, borderRadius: 13, gap: 9, minHeight: 43,
         }]}>
           <Txt style={{ color: c.onHero, fontWeight: "600", fontSize: 13 }}>{notice.message}</Txt>
