@@ -1,5 +1,5 @@
 import type { BudgetConfig, Transaction, TransactionCategory } from "../types";
-import { isoDate, moveDay } from "./budget";
+import { isoDate, moveDay } from "./budget.ts";
 
 export function sampleData(date = isoDate()): { config: BudgetConfig; transactions: Transaction[] } {
   const config: BudgetConfig = {
@@ -18,6 +18,10 @@ export function sampleData(date = isoDate()): { config: BudgetConfig; transactio
     [15, 128.5, "Shopping", "Weekend errands"], [17, 55.82, "Food", "Groceries"],
     [20, 31, "Entertainment", "Concert ticket"],
   ];
-  return { config, transactions: examples.map(([ago, amount, category, note], index) =>
-    ({ id: `demo-${index}`, date: moveDay(date, -ago), amount: -amount, category, note })) };
+  const transactions: Transaction[] = examples.map(([ago, amount, category, note], index) =>
+    ({ id: `demo-${index}`, date: moveDay(date, -ago), amount: -amount, category, note }));
+  transactions.push({
+    id: "demo-pending", date, amount: -8.4, category: "Other", note: "Pharmacy", account: "Visa", pending: true,
+  });
+  return { config, transactions };
 }

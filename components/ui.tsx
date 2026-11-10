@@ -1,63 +1,68 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Platform, Pressable, StyleSheet, Text, TextInput, View, useColorScheme, type StyleProp, type TextStyle, type ViewStyle, type TextInputProps } from "react-native";
-import Svg, { Circle, Path, Rect } from "react-native-svg";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, useColorScheme, type StyleProp, type TextStyle, type ViewStyle, type TextInputProps, type AccessibilityRole } from "react-native";
+import Svg, { Rect } from "react-native-svg";
 import { ArrowDownLeft, BusFront, Clapperboard, Ellipsis, Moon, PiggyBank, ReceiptText, ShoppingBag, Sun, Utensils } from "lucide-react-native";
 import type { TransactionCategory } from "../types";
 
 const heroColors = {
-  onHero: "#f5f7f6", heroMuted: "#b4beb8", heroPill: "#303a34", heroLine: "#36473e",
-  heroGreen: "#6ee7a8", heroWarning: "#fbbf68", heroError: "#ff8585",
+  onHero: "#f4f7f5", heroMuted: "#c5d0ca", heroLine: "#31443b",
+  heroGreen: "#8ee7bc", heroWarning: "#f5c07a", heroError: "#ffb1b1",
 };
 
 const light = {
   ...heroColors,
-  bg: "#f5f6f5", surface: "#ffffff", ink: "#161a18", muted: "#565f5a", faint: "#646f68",
-  border: "#dfe5e1", accent: "#08714f", soft: "#e3f2e9", hero: "#18221d",
-  error: "#b42326", green: "#08714f", warning: "#935307", primary: "#08714f", onPrimary: "#ffffff",
-  danger: "#fce9e9", track: "#e6ebe8", shade: "rgba(15, 20, 17, 0.52)",
+  bg: "#f3f6f4", surface: "#ffffff", ink: "#17211c", muted: "#4d5c55", faint: "#5d6c64",
+  border: "#dce5df", accent: "#08714f", soft: "#e5f3ec", hero: "#15211c",
+  error: "#9d1c28", green: "#08714f", warning: "#8a4b00", warningBg: "#fbf3e4",
+  primary: "#08714f", onPrimary: "#ffffff",
+  danger: "#fdecec", track: "#e3ebe6", shade: "rgba(16, 24, 20, 0.52)",
 };
 
 const dark: typeof light = {
   ...heroColors,
-  bg: "#0a0a0a", surface: "#161616", ink: "#f4f5f4", muted: "#b7bdb9", faint: "#a4ada7",
-  border: "#2c302e", accent: "#59dfa0", soft: "#173226", hero: "#17201b",
-  error: "#ff8585", green: "#59dfa0", warning: "#fbbf68", primary: "#08714f", onPrimary: "#ffffff",
-  danger: "#3f2324", track: "#2b322e", shade: "rgba(5, 7, 6, 0.7)",
+  bg: "#101412", surface: "#18211d", ink: "#f3f6f4", muted: "#c5d0ca", faint: "#a8b6af",
+  border: "#2c3a34", accent: "#7ee0b8", soft: "#1a332b", hero: "#0e1915",
+  error: "#ffb1b1", green: "#7ee0b8", warning: "#f5c07a", warningBg: "#3a2e1c",
+  primary: "#7ee0b8", onPrimary: "#06281c",
+  danger: "#3a2226", track: "#2a3832", shade: "rgba(6, 10, 8, 0.72)",
 };
 
 const lightCategories = {
-  Food: { icon: Utensils, bg: "#fff0e0", color: "#9b4d19", bar: "#eea063" },
-  Shopping: { icon: ShoppingBag, bg: "#e5eef8", color: "#315c8c", bar: "#739fd1" },
-  Transport: { icon: BusFront, bg: "#e1f2f5", color: "#256675", bar: "#6cb9c8" },
-  Entertainment: { icon: Clapperboard, bg: "#f3eddf", color: "#755b23", bar: "#bda26a" },
-  Other: { icon: Ellipsis, bg: "#ebedf3", color: "#53596d", bar: "#9da2b4" },
-  Bills: { icon: ReceiptText, bg: "#fde9e9", color: "#9c3e4a", bar: "#ed8b90" },
-  Savings: { icon: PiggyBank, bg: "#ddf4ea", color: "#28644f", bar: "#6dbfa0" },
-  Income: { icon: ArrowDownLeft, bg: "#e4f4e7", color: "#28644f", bar: "#7cc697" },
+  Food: { icon: Utensils, bg: "#f8efe4", color: "#8a4516", bar: "#e39a5c" },
+  Shopping: { icon: ShoppingBag, bg: "#e7eef6", color: "#2d5278", bar: "#7ea4cc" },
+  Transport: { icon: BusFront, bg: "#e4f1f3", color: "#1f5c68", bar: "#6aafbc" },
+  Entertainment: { icon: Clapperboard, bg: "#f4f0e6", color: "#6d5420", bar: "#c2aa72" },
+  Other: { icon: Ellipsis, bg: "#eceef2", color: "#4e5564", bar: "#a3a8b6" },
+  Bills: { icon: ReceiptText, bg: "#fbeaea", color: "#8d3642", bar: "#e08b90" },
+  Savings: { icon: PiggyBank, bg: "#e3f4ec", color: "#1f5c45", bar: "#74b89a" },
+  Income: { icon: ArrowDownLeft, bg: "#e5f4e8", color: "#1f5c45", bar: "#7dbe96" },
 };
 
 const darkCategories: typeof lightCategories = {
-  Food: { ...lightCategories.Food, bg: "#402c25", color: "#ffba87" },
-  Shopping: { ...lightCategories.Shopping, bg: "#213247", color: "#a9caff" },
-  Transport: { ...lightCategories.Transport, bg: "#1c3438", color: "#93d8e4" },
-  Entertainment: { ...lightCategories.Entertainment, bg: "#3c3221", color: "#e5c78d" },
-  Other: { ...lightCategories.Other, bg: "#313247", color: "#ced0e7" },
-  Bills: { ...lightCategories.Bills, bg: "#432936", color: "#ffabb8" },
-  Savings: { ...lightCategories.Savings, bg: "#203c36", color: "#9ae4c9" },
-  Income: { ...lightCategories.Income, bg: "#223b31", color: "#a1dfb6" },
+  Food: { ...lightCategories.Food, bg: "#3a2a22", color: "#ffc093" },
+  Shopping: { ...lightCategories.Shopping, bg: "#1d2c3d", color: "#b7d4f8" },
+  Transport: { ...lightCategories.Transport, bg: "#1a3236", color: "#a5dce6" },
+  Entertainment: { ...lightCategories.Entertainment, bg: "#38301e", color: "#ecd39a" },
+  Other: { ...lightCategories.Other, bg: "#2c2e3a", color: "#d5d7e6" },
+  Bills: { ...lightCategories.Bills, bg: "#3d262c", color: "#ffc0c8" },
+  Savings: { ...lightCategories.Savings, bg: "#1b3830", color: "#b7ecd4" },
+  Income: { ...lightCategories.Income, bg: "#1d382c", color: "#b7e6c8" },
 };
 
 const makeStyles = (c: typeof light) => StyleSheet.create({
-  panel: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 23 },
+  panel: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border, borderRadius: 16, borderCurve: "continuous" },
   row: { flexDirection: "row", alignItems: "center" },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontSize: 22, letterSpacing: -0.65, color: c.ink, fontWeight: "700" },
-  label: { color: c.ink, fontWeight: "600", fontSize: 14 },
+  title: { fontSize: 28, lineHeight: 34, letterSpacing: -0.4, color: c.ink, fontWeight: "700" },
+  label: { color: c.ink, fontWeight: "600", fontSize: 15, lineHeight: 20 },
   muted: { color: c.muted, fontSize: 14, lineHeight: 20 },
-  eyebrow: { color: c.faint, fontSize: 10, fontWeight: "800", letterSpacing: 1.65 },
+  caption: { color: c.muted, fontSize: 13, lineHeight: 18, fontWeight: "600" },
   number: { fontVariant: ["tabular-nums"], color: c.ink, fontWeight: "700" },
-  field: { minHeight: 48, borderWidth: 1, borderColor: c.border, backgroundColor: c.bg, borderRadius: 13, color: c.ink, paddingHorizontal: 13, fontSize: 16 },
+  field: {
+    minHeight: 48, borderWidth: 1, borderColor: c.border, backgroundColor: c.bg, borderRadius: 10,
+    borderCurve: "continuous", color: c.ink, paddingHorizontal: 12, fontSize: 16,
+  },
   divider: { height: 1, backgroundColor: c.border },
 });
 
@@ -110,13 +115,23 @@ export function ThemeToggle() {
   const Icon = isDark ? Sun : Moon;
   return <IconButton label={isDark ? "Switch to light mode" : "Switch to dark mode"}
     onPress={toggle} style={{ backgroundColor: c.soft }}>
-    <Icon size={19} color={c.accent} />
+    <Icon size={18} color={c.accent} />
   </IconButton>;
 }
 
-export function Txt({ children, style, lines }: { children: ReactNode; style?: StyleProp<TextStyle>; lines?: number }) {
+export function Txt({ children, style, lines, selectable, accessibilityRole, maxFontSizeMultiplier = 1.6 }: {
+  children: ReactNode; style?: StyleProp<TextStyle>; lines?: number; selectable?: boolean;
+  accessibilityRole?: AccessibilityRole; maxFontSizeMultiplier?: number;
+}) {
   const { c } = useTheme();
-  return <Text numberOfLines={lines} style={[{ color: c.ink }, style]}>{children}</Text>;
+  return <Text accessibilityRole={accessibilityRole} selectable={selectable} maxFontSizeMultiplier={maxFontSizeMultiplier}
+    numberOfLines={lines} style={[{ color: c.ink }, style]}>{children}</Text>;
+}
+
+function focusRing(color: string, focused: boolean): ViewStyle {
+  return focused && Platform.OS === "web"
+    ? { outlineWidth: 2, outlineStyle: "solid", outlineColor: color, outlineOffset: 2 }
+    : {};
 }
 
 export function Action({ children, onPress, tone = "primary", disabled, label, style }: {
@@ -124,75 +139,83 @@ export function Action({ children, onPress, tone = "primary", disabled, label, s
   disabled?: boolean; label?: string; style?: StyleProp<ViewStyle>;
 }) {
   const { c } = useTheme();
+  const [focused, setFocused] = useState(false);
   const bg = { primary: c.primary, soft: c.soft, plain: c.surface, danger: c.danger }[tone];
   const fg = { primary: c.onPrimary, soft: c.accent, plain: c.ink, danger: c.error }[tone];
+  const border = tone === "plain" ? c.border : "transparent";
   return <Pressable accessibilityRole="button" accessibilityLabel={label}
     accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [{ minHeight: 46, alignItems: "center", justifyContent: "center", borderRadius: 13,
-      flexDirection: "row", gap: 7, paddingHorizontal: 14, backgroundColor: bg, opacity: disabled ? 0.48 : pressed ? 0.76 : 1 }, style]}>
-    {typeof children === "string" ? <Txt style={{ color: fg, fontSize: 14, fontWeight: "700" }}>{children}</Txt> : children}
+    onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+    style={({ pressed }) => [{ minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 10,
+      borderCurve: "continuous", flexDirection: "row", gap: 8, paddingHorizontal: 16, backgroundColor: bg,
+      borderWidth: 1, borderColor: border, opacity: disabled ? 0.48 : pressed ? 0.82 : 1 }, focusRing(c.accent, focused), style]}>
+    {typeof children === "string" ? <Txt style={{ color: fg, fontSize: 15, fontWeight: "600" }}>{children}</Txt> : children}
   </Pressable>;
 }
 
 export function IconButton({ label, children, onPress, disabled, style }: {
   label: string; children: ReactNode; onPress: () => void; disabled?: boolean; style?: StyleProp<ViewStyle>;
 }) {
+  const { c } = useTheme();
+  const [focused, setFocused] = useState(false);
   return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled}
     accessibilityState={{ disabled: !!disabled }}
-    style={({ pressed }) => [{ minHeight: 44, minWidth: 44, borderRadius: 13, alignItems: "center",
-      justifyContent: "center", opacity: disabled ? 0.32 : pressed ? 0.55 : 1 }, style]}>{children}</Pressable>;
+    onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+    style={({ pressed }) => [{ minHeight: 44, minWidth: 44, borderRadius: 10, borderCurve: "continuous",
+      alignItems: "center", justifyContent: "center", opacity: disabled ? 0.32 : pressed ? 0.7 : 1 },
+      focusRing(c.accent, focused), style]}>{children}</Pressable>;
 }
 
 export function Brand({ small = false }: { small?: boolean }) {
   const { c, s } = useTheme();
-  return <View style={[s.row, { gap: 9 }]}>
-    <View style={{ backgroundColor: c.primary, borderRadius: 11, width: 34, height: 34, alignItems: "center", justifyContent: "center" }}>
-      <Svg width={22} height={22} viewBox="0 0 28 28">
-        <Rect x={4} y={15} width={4.5} height={9} rx={2} fill="#ade5c8" />
+  return <View style={[s.row, { gap: 8 }]}>
+    <View style={{ backgroundColor: "#08714f", borderRadius: 8, borderCurve: "continuous", width: 32, height: 32, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={20} height={20} viewBox="0 0 28 28">
+        <Rect x={4} y={15} width={4.5} height={9} rx={2} fill="#b7e6cc" />
         <Rect x={11.75} y={10} width={4.5} height={14} rx={2} fill="#ffffff" />
-        <Rect x={19.5} y={4} width={4.5} height={20} rx={2} fill={c.heroGreen} />
+        <Rect x={19.5} y={4} width={4.5} height={20} rx={2} fill="#8ee7bc" />
       </Svg>
     </View>
-    <Txt style={{ fontSize: small ? 17 : 19, fontWeight: "800", letterSpacing: -0.65 }}>Expense Macros</Txt>
+    <Txt style={{ fontSize: small ? 16 : 18, fontWeight: "700", letterSpacing: -0.3 }}>Expense Macros</Txt>
   </View>;
 }
 
 export function Field({ label, style, ...props }: TextInputProps & { label: string }) {
   const { c, s, scheme } = useTheme();
-  return <View style={{ gap: 7 }}>
+  const [focused, setFocused] = useState(false);
+  return <View style={{ gap: 8 }}>
     <Txt style={s.label}>{label}</Txt>
-    <TextInput accessibilityLabel={label} keyboardAppearance={scheme} placeholderTextColor={c.faint} style={[s.field, style]} {...props} />
+    <TextInput accessibilityLabel={label} keyboardAppearance={scheme} placeholderTextColor={c.faint}
+      {...props}
+      onFocus={event => { setFocused(true); props.onFocus?.(event); }}
+      onBlur={event => { setFocused(false); props.onBlur?.(event); }}
+      style={[s.field, focused && Platform.OS === "web" ? { borderColor: c.accent } : null, style]} />
   </View>;
 }
 
-export function Badge({ category, size = 40 }: { category: TransactionCategory; size?: number }) {
+export function Banner({ tone = "info", title, children }: {
+  tone?: "info" | "warning" | "error"; title?: string; children: ReactNode;
+}) {
+  const { c } = useTheme();
+  const color = tone === "error" ? c.error : tone === "warning" ? c.warning : c.accent;
+  const bg = tone === "error" ? c.danger : tone === "warning" ? c.warningBg : c.soft;
+  return <View accessibilityRole="alert" style={{ backgroundColor: bg, borderRadius: 12, borderCurve: "continuous", padding: 12, gap: 4 }}>
+    {!!title && <Txt style={{ color, fontWeight: "700", fontSize: 15 }}>{title}</Txt>}
+    <Txt style={{ color, fontSize: 14, lineHeight: 20 }}>{children}</Txt>
+  </View>;
+}
+
+export function Meter({ percent, color, track, label }: { percent: number | null; color: string; track: string; label: string }) {
+  const width = percent === null ? 0 : Math.max(0, Math.min(100, percent));
+  return <View accessibilityLabel={label} style={{ height: 8, borderRadius: 4, backgroundColor: track, overflow: "hidden" }}>
+    <View style={{ width: `${width}%`, height: 8, backgroundColor: color }} />
+  </View>;
+}
+
+export function Badge({ category, size = 36 }: { category: TransactionCategory; size?: number }) {
   const { cat } = useTheme();
   const { icon: Icon, bg, color } = cat[category] ?? cat.Other;
-  return <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center", borderRadius: 13, backgroundColor: bg }}>
-    <Icon size={size * 0.47} color={color} strokeWidth={1.85} />
-  </View>;
-}
-
-export function Arc({ percent, color, size }: { percent: number | null; color: string; size: number }) {
-  const { c } = useTheme();
-  const sweep = 2 * Math.PI * 49;
-  return <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }}
-    accessibilityLabel={percent === null ? "No allowance" : `${percent}% of allowance used`}>
-    <Svg width={size} height={size} viewBox="0 0 120 120" style={StyleSheet.absoluteFill}>
-      <Circle cx={60} cy={60} r={49} fill="none" stroke={c.heroLine} strokeWidth={9} />
-      {percent !== null && percent > 0 && <Circle cx={60} cy={60} r={49} fill="none" stroke={color} strokeWidth={9}
-        strokeLinecap="round" strokeDasharray={`${sweep * Math.min(percent, 100) / 100} ${sweep}`} transform="rotate(-90 60 60)" />}
-    </Svg>
-    <Txt style={{ fontSize: size * 0.23, color: c.onHero, fontWeight: "800", letterSpacing: -1 }}>{percent === null ? "—" : percent > 999 ? "999+%" : `${percent}%`}</Txt>
-    <Txt style={{ color: c.heroMuted, fontSize: 10, fontWeight: "600" }}>{percent === null ? "no target" : "used"}</Txt>
-  </View>;
-}
-
-export function Contours() {
-  const { c } = useTheme();
-  return <View pointerEvents="none" style={{ position: "absolute", right: -43, top: -82, opacity: 0.61 }}>
-    <Svg width={290} height={280} viewBox="0 0 290 280">
-      <Path d="M21 249C92 237 46 153 124 129S182 57 158 0M47 266C120 253 74 166 150 145S215 70 183 0M73 280C146 267 103 182 177 158S241 79 212 0M108 280C171 263 133 198 203 174S268 91 240 0M144 280C194 262 167 218 228 190S290 100 267 0M173 280C220 261 198 235 255 206S319 114 297 0" stroke={c.heroLine} strokeWidth="1" fill="none" />
-    </Svg>
+  return <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center", borderRadius: 8, borderCurve: "continuous", backgroundColor: bg }}>
+    <Icon size={size * 0.46} color={color} strokeWidth={1.9} />
   </View>;
 }

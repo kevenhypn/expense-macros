@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { BudgetConfig, Transaction } from "../types";
+import { DataError, normalizeStored } from "./validate.ts";
 
 const CONFIG_KEY = "expense_macros_budget_config";
 const TX_KEY = "expense_macros_transactions";
@@ -7,15 +8,16 @@ const TX_KEY = "expense_macros_transactions";
 export const generateId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
-export async function loadData(): Promise<{ config: BudgetConfig | null; transactions: Transaction[] }> {
-  const [[, config], [, transactions]] = await AsyncStorage.multiGet([CONFIG_KEY, TX_KEY]);
-  const plan: BudgetConfig | null = config === null ? null : JSON.parse(config);
-  const entries: Transaction[] = transactions === null ? [] : JSON.parse(transactions);
-  if ((config !== null && (!plan || !Array.isArray(plan.bills) || !plan.savingsGoal))
-    || !Array.isArray(entries)) {
-    throw new Error("Saved data is not in the expected format.");
+export async function loadData() {
+  let rows: readonly (readonly [string, string | null])[];
+  try {
+    rows = await AsyncStorage.multiGet([CONFIG_KEY, TX_KEY]);
+  } catch {
+    throw new DataError("Storage is unavailable on this device.");
   }
-  return { config: plan, transactions: entries };
+  const configRaw = rows.find(([key]) => key === CONFIG_KEY)?.[1] ?? null;
+  const transactionsRaw = rows.find(([key]) => key === TX_KEY)?.[1] ?? null;
+  return normalizeStored(configRaw, transactionsRaw);
 }
 
 export const saveConfig = (config: BudgetConfig) =>
@@ -23,3 +25,7 @@ export const saveConfig = (config: BudgetConfig) =>
 
 export const saveTransactions = (transactions: Transaction[]) =>
   AsyncStorage.setItem(TX_KEY, JSON.stringify(transactions));
+
+export const clearData = () => AsyncStorage.multiRemove([CONFIG_KEY, TX_KEY]);
+
+export { DataError };

@@ -9,7 +9,9 @@
     "web": "expo start --web",
     "assets:generate": "node scripts/generate-assets.cjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --test tests/*.test.ts",
+    "dev": "expo start --web --port 8081",
+    "check": "npm run typecheck && npm test",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.ts",
     "build:web": "expo export --platform web && node scripts/prepare-web.cjs"
   },
   "dependencies": {
@@ -42,6 +44,6 @@
   },
   "private": true,
   "engines": {
-    "node": ">=20.19.4"
+    "node": ">=22"
   }
 }

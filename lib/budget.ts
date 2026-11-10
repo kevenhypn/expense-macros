@@ -1,19 +1,9 @@
 import type { BudgetConfig, Transaction, TransactionCategory } from "../types";
+import { expenseCategories } from "./categories.ts";
+import { amountValue, dollarsToCents, formatCents, money, roundCents } from "./money.ts";
 
-export const flexible = ["Food", "Shopping", "Transport", "Entertainment", "Other"] as const;
-export const expenseCategories = [...flexible, "Bills", "Savings"] as const;
-
-const cents = (value: number) => Math.round(value * 100);
-export const money = (value: number, digits = 2) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits,
-  }).format(value === 0 ? 0 : value);
-
-export function amountValue(value: string) {
-  const cleaned = value.trim().replace(/^\$/, "").replace(/,/g, "");
-  if (!/^(?:\d{1,7}(?:\.\d{0,2})?|\.\d{1,2})$/.test(cleaned)) return null;
-  return cents(Number(cleaned)) / 100;
-}
+export { amountValue, money, formatCents };
+export { expenseCategories, flexible } from "./categories.ts";
 
 export function isoDate(date = new Date()) {
   return [date.getFullYear(), date.getMonth() + 1, date.getDate()].map((part, index) =>
@@ -23,7 +13,7 @@ export function isoDate(date = new Date()) {
 
 export function localDate(iso: string) {
   const [year, month, day] = iso.split("-").map(Number);
-  return new Date(year, month - 1, day, 12);
+  return new Date(year, (month || 1) - 1, day || 1, 12);
 }
 
 export function isDate(iso: string) {
@@ -36,11 +26,20 @@ export function moveDay(iso: string, days: number) {
   return isoDate(date);
 }
 
+/** Keep the day of month, and clamp to the last real day of the destination month. */
 export function moveMonth(iso: string, months: number) {
   const date = localDate(iso);
+  const day = date.getDate();
   date.setDate(1);
   date.setMonth(date.getMonth() + months);
+  const last = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  date.setDate(Math.min(day, last));
   return isoDate(date);
+}
+
+export function daysInMonth(iso: string) {
+  const date = localDate(iso);
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
 export function weekDates(iso: string) {
@@ -52,51 +51,149 @@ export function dateLabel(iso: string, options: Intl.DateTimeFormatOptions) {
   return localDate(iso).toLocaleDateString("en-US", options);
 }
 
-export function planTotals(config: BudgetConfig) {
-  const income = cents(config.monthlyIncome);
-  const bills = config.bills.reduce((sum, bill) => sum + cents(bill.amount), 0);
+export type PlanCents = { income: number; bills: number; savings: number; flex: number };
+
+export function planCents(config: BudgetConfig): PlanCents {
+  const income = Math.max(0, dollarsToCents(config.monthlyIncome) ?? 0);
+  const bills = config.bills.reduce((sum, bill) => sum + Math.max(0, dollarsToCents(bill.amount) ?? 0), 0);
   const savings = config.savingsGoal.mode === "percent"
-    ? Math.round(income * config.savingsGoal.percent / 100)
-    : cents(config.savingsGoal.amount);
-  return { income: income / 100, bills: bills / 100, savings: savings / 100, flex: (income - bills - savings) / 100 };
+    ? roundCents(income * Math.round(config.savingsGoal.percent * 100) / 10000)
+    : Math.max(0, dollarsToCents(config.savingsGoal.amount) ?? 0);
+  return { income, bills, savings, flex: income - bills - savings };
 }
 
-export function budgetFor(config: BudgetConfig, transactions: Transaction[], date: string) {
-  const plan = planTotals(config);
+export function planTotals(config: BudgetConfig) {
+  const plan = planCents(config);
+  return {
+    income: plan.income / 100,
+    bills: plan.bills / 100,
+    savings: plan.savings / 100,
+    flex: plan.flex / 100,
+  };
+}
+
+export type BudgetSnapshot = {
+  plan: PlanCents;
+  /** Non-system rows in the selected month, on or before today, including pending. */
+  entries: Transaction[];
+  categories: { category: TransactionCategory; cents: number }[];
+  monthBudgetCents: number;
+  monthIncomeCents: number;
+  monthSpentCents: number;
+  monthLeftCents: number;
+  pendingCents: number;
+  pendingSpendCents: number;
+  pendingIncomeCents: number;
+  dailyCents: number;
+  daySpentCents: number;
+  dayIncomeCents: number;
+  dayLeftCents: number;
+  daysInMonth: number;
+  dayOfMonth: number;
+  hiddenFuture: number;
+};
+
+/**
+ * Daily pace is a share of the plan, not the whole month.
+ * Fixed: (flexible plan + extra income on or before the selected day) / days in the month.
+ * Adaptive: (flexible plan + posted activity before the selected day + today's extra income) / days left, including today.
+ * Today's posted spending, including refunds, is then subtracted in full.
+ * Pending rows stay in `entries` and out of every total. System rows are ignored.
+ * Month totals include later days in the month up to `today`, so looking back at an earlier day still shows the month.
+ */
+export function budgetFor(
+  config: BudgetConfig,
+  transactions: Transaction[],
+  date: string,
+  today = "9999-12-31",
+): BudgetSnapshot {
+  if (!isDate(date)) throw new Error("Invalid budget date.");
+  const plan = planCents(config);
+  const days = daysInMonth(date);
+  const dayOfMonth = localDate(date).getDate();
   const prefix = date.slice(0, 7);
-  const day = localDate(date).getDate();
-  const days = localDate(moveDay(moveMonth(date, 1), -1)).getDate();
-  // Planned income, bills and savings already live in the plan. Legacy system rows
-  // are kept in storage and never counted a second time.
-  const entries = transactions.filter(tx => !tx.isSystem && tx.date.startsWith(prefix));
+  const rollover = config.rolloverUnspent === true;
+  const entries: Transaction[] = [];
   const byCategory: Partial<Record<TransactionCategory, number>> = {};
+  let priorNet = 0;
+  let todayIncome = 0;
+  let todaySpend = 0;
+  let incomeThroughDay = 0;
   let earned = 0;
   let spent = 0;
-  let daySpent = 0;
-  let priorNet = 0;
-  for (const tx of entries) {
-    if (tx.pending) continue;
-    const signed = cents(tx.amount);
-    if (tx.category === "Income") earned += signed;
-    else {
-      spent -= signed;
-      byCategory[tx.category] = (byCategory[tx.category] ?? 0) - signed;
-      if (tx.date === date) daySpent -= signed;
+  let pendingCents = 0;
+  let pendingSpendCents = 0;
+  let pendingIncomeCents = 0;
+  let hiddenFuture = 0;
+
+  for (const tx of transactions) {
+    if (tx.isSystem || !tx.date.startsWith(prefix)) continue;
+    if (!isDate(tx.date) || tx.date > today) {
+      if (tx.date > today && tx.date.startsWith(prefix)) hiddenFuture += 1;
+      continue;
+    }
+    const signed = dollarsToCents(tx.amount);
+    if (signed === null) continue;
+    entries.push(tx);
+    if (tx.pending) {
+      pendingCents += signed;
+      if (tx.category === "Income") pendingIncomeCents += signed;
+      else pendingSpendCents -= signed;
+      continue;
     }
     if (tx.date < date) priorNet += signed;
+    if (tx.date === date) {
+      if (tx.category === "Income") todayIncome += signed;
+      else todaySpend -= signed;
+    }
+    if (tx.category === "Income") {
+      earned += signed;
+      if (tx.date <= date) incomeThroughDay += signed;
+    } else {
+      spent -= signed;
+      byCategory[tx.category] = (byCategory[tx.category] ?? 0) - signed;
+    }
   }
-  const limit = cents(plan.flex);
-  const daily = config.rolloverUnspent
-    ? Math.round((limit + priorNet) / (days - day + 1))
-    : Math.round(limit / days);
+
+  const remainingDays = Math.max(1, days - dayOfMonth + 1);
+  const dailyCents = rollover
+    ? roundCents((plan.flex + priorNet + todayIncome) / remainingDays)
+    : roundCents((plan.flex + incomeThroughDay) / days);
+
   return {
-    plan, entries,
-    categories: expenseCategories.map(category => ({ category, amount: (byCategory[category] ?? 0) / 100 })),
-    monthBudget: (limit + earned) / 100,
-    monthSpent: spent / 100,
-    monthLeft: (limit + earned - spent) / 100,
-    daily: daily / 100,
-    daySpent: daySpent / 100,
-    dayLeft: (daily - daySpent) / 100,
+    plan,
+    entries,
+    categories: expenseCategories.map(category => ({ category, cents: byCategory[category] ?? 0 })),
+    monthBudgetCents: plan.flex + earned,
+    monthIncomeCents: earned,
+    monthSpentCents: spent,
+    monthLeftCents: plan.flex + earned - spent,
+    pendingCents,
+    pendingSpendCents,
+    pendingIncomeCents,
+    dailyCents,
+    daySpentCents: todaySpend,
+    dayIncomeCents: todayIncome,
+    dayLeftCents: dailyCents - todaySpend,
+    daysInMonth: days,
+    dayOfMonth,
+    hiddenFuture,
   };
+}
+
+export function dayEquation(snapshot: BudgetSnapshot) {
+  const target = formatCents(snapshot.dailyCents);
+  const left = formatCents(snapshot.dayLeftCents);
+  if (snapshot.daySpentCents < 0) {
+    return `Target ${target} + refunded ${formatCents(-snapshot.daySpentCents)} = ${left}`;
+  }
+  return `Target ${target} − spent ${formatCents(snapshot.daySpentCents)} = ${left}`;
+}
+
+export function monthEquation(snapshot: BudgetSnapshot) {
+  const plan = formatCents(snapshot.plan.flex);
+  const spent = formatCents(snapshot.monthSpentCents);
+  const left = formatCents(snapshot.monthLeftCents);
+  if (snapshot.monthIncomeCents === 0) return `Plan ${plan} − spent ${spent} = ${left}`;
+  return `Plan ${plan} + income ${formatCents(snapshot.monthIncomeCents)} − spent ${spent} = ${left}`;
 }
