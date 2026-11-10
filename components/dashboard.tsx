@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import {
   ArrowDownRight, ArrowRight, CalendarDays, ChartNoAxesColumnIncreasing, ChevronLeft, ChevronRight,
@@ -47,67 +47,85 @@ export function DateStrip({ date, today, entries, onDate }: {
   </View>;
 }
 
-export function Allowance({ left, spent, limit, rollover, compact, isToday = true }: {
+export function Allowance({ left, spent, limit, rollover, compact, isToday = true, wide = false, monthly }: {
   left: number; spent: number; limit: number; rollover: boolean; compact: boolean; isToday?: boolean;
+  wide?: boolean; monthly?: ReactNode;
 }) {
   const { c, s } = useTheme();
   const over = left < 0;
   const progressColor = over ? c.heroError : nearingLimit(spent, limit) ? c.heroWarning : c.heroGreen;
   const balanceColor = over ? c.heroError : left > 0 ? c.heroGreen : c.onHero;
-  return <View style={{ backgroundColor: c.hero, borderRadius: 26, overflow: "hidden", padding: compact ? 20 : 26, gap: 17 }}>
-    <Contours />
-    <View style={s.between}>
-      <View style={[s.row, { gap: 8 }]}><Wallet size={15} color={c.heroGreen} /><Txt style={[s.eyebrow, { color: c.heroMuted }]}>DAILY ALLOWANCE</Txt></View>
-      <View style={{ backgroundColor: c.heroPill, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }}>
-        <Txt style={{ color: c.onHero, fontSize: 10, fontWeight: "700" }}>{rollover ? "Adaptive pace" : "Fixed pace"}</Txt>
+  return <View style={{ backgroundColor: c.hero, borderRadius: 26, overflow: "hidden", padding: compact ? 20 : 26,
+    flexDirection: wide ? "row" : "column", gap: wide ? 24 : 17 }}>
+    <View style={{ flex: wide ? 1.45 : undefined, minWidth: 0, gap: 17 }}>
+      <Contours />
+      <View style={s.between}>
+        <View style={[s.row, { gap: 8 }]}><Wallet size={15} color={c.heroGreen} /><Txt style={[s.eyebrow, { color: c.heroMuted }]}>DAILY ALLOWANCE</Txt></View>
+        <View style={{ backgroundColor: c.heroPill, paddingHorizontal: 9, paddingVertical: 6, borderRadius: 20 }}>
+          <Txt style={{ color: c.onHero, fontSize: 10, fontWeight: "700" }}>{rollover ? "Adaptive pace" : "Fixed pace"}</Txt>
+        </View>
+      </View>
+      <View style={[s.between, { gap: 4 }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Txt style={{ color: c.heroMuted, fontSize: 13, fontWeight: "600" }}>{over ? "Over allowance" : isToday ? "Left to spend today" : "Left to spend that day"}</Txt>
+          <Txt lines={1} style={[s.number, { color: balanceColor, fontSize: Math.abs(left) >= 1000 ? (compact ? 30 : 38) : (compact ? 43 : 54), letterSpacing: -2.5, marginTop: 1 }]}>{money(Math.abs(left))}</Txt>
+        </View>
+        <Arc percent={percent(spent, limit)} color={progressColor} size={compact ? 99 : 122} />
+      </View>
+      <View style={{ height: 1, backgroundColor: c.heroLine }} />
+      <View style={[s.row, { gap: 18 }]}>
+        <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>{spent < 0 ? "Net refunded" : "Net spent"}</Txt>
+          <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(Math.abs(spent))}</Txt></View>
+        <View style={{ width: 1, alignSelf: "stretch", backgroundColor: c.heroLine }} />
+        <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>Daily target</Txt>
+          <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(limit)}</Txt></View>
       </View>
     </View>
-    <View style={[s.between, { gap: 4 }]}>
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Txt style={{ color: c.heroMuted, fontSize: 13, fontWeight: "600" }}>{over ? "Over allowance" : isToday ? "Left to spend today" : "Left to spend that day"}</Txt>
-        <Txt lines={1} style={[s.number, { color: balanceColor, fontSize: Math.abs(left) >= 1000 ? (compact ? 30 : 38) : (compact ? 43 : 54), letterSpacing: -2.5, marginTop: 1 }]}>{money(Math.abs(left))}</Txt>
-      </View>
-      <Arc percent={percent(spent, limit)} color={progressColor} size={compact ? 99 : 122} />
-    </View>
-    <View style={{ height: 1, backgroundColor: c.heroLine }} />
-    <View style={[s.row, { gap: 18 }]}>
-      <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>{spent < 0 ? "Net refunded" : "Net spent"}</Txt>
-        <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(Math.abs(spent))}</Txt></View>
-      <View style={{ width: 1, alignSelf: "stretch", backgroundColor: c.heroLine }} />
-      <View style={{ flex: 1, gap: 3 }}><Txt style={{ color: c.heroMuted, fontSize: 11 }}>Daily target</Txt>
-        <Txt style={[s.number, { color: c.onHero, fontSize: 17 }]}>{money(limit)}</Txt></View>
-    </View>
+    {monthly && <>
+      <View style={{ width: wide ? 1 : undefined, height: wide ? undefined : 1, backgroundColor: c.heroLine }} />
+      <View style={{ flex: wide ? 1 : undefined, minWidth: 0, justifyContent: "center" }}>{monthly}</View>
+    </>}
   </View>;
 }
 
-export function MonthCard({ data, date, onPress }: { data: Budget; date: string; onPress?: () => void }) {
+function MonthCard({ data, date, onPress, embedded = false }: {
+  data: Budget; date: string; onPress?: () => void; embedded?: boolean;
+}) {
   const { c, s } = useTheme();
   const used = percent(data.monthSpent, data.monthBudget);
   const over = data.monthLeft < 0;
-  const progressColor = over ? c.error : nearingLimit(data.monthSpent, data.monthBudget) ? c.warning : c.green;
-  const balanceColor = over ? c.error : data.monthLeft > 0 ? c.green : c.ink;
+  const green = embedded ? c.heroGreen : c.green;
+  const error = embedded ? c.heroError : c.error;
+  const warning = embedded ? c.heroWarning : c.warning;
+  const muted = { color: embedded ? c.heroMuted : c.muted, fontSize: 11 };
+  const progressColor = over ? error : nearingLimit(data.monthSpent, data.monthBudget) ? warning : green;
+  const balanceColor = over ? error : data.monthLeft > 0 ? green : embedded ? c.onHero : c.ink;
   const bar = Math.min(100, used ?? (over ? 100 : 0));
+  const label = `${dateLabel(date, { month: "long" })} budget`;
   const content = <>
     <View style={[s.between, { gap: 8 }]}>
-      <View style={[s.row, { gap: 10 }]}>
+      {embedded ? <View style={[s.row, { gap: 8 }]}>
+        <ChartNoAxesColumnIncreasing color={green} size={15} />
+        <Txt style={[s.eyebrow, { color: c.heroMuted }]}>{label.toUpperCase()}</Txt>
+      </View> : <View style={[s.row, { gap: 10 }]}>
         <View style={{ backgroundColor: c.soft, borderRadius: 11, width: 35, height: 35, justifyContent: "center", alignItems: "center" }}><ChartNoAxesColumnIncreasing color={c.accent} size={18} /></View>
-        <View style={{ gap: 1 }}><Txt style={s.label}>{dateLabel(date, { month: "long" })} budget</Txt><Txt style={{ color: c.muted, fontSize: 11 }}>Flexible spending</Txt></View>
-      </View>
-      {onPress && <ArrowRight size={17} color={c.accent} />}
+        <View style={{ gap: 1 }}><Txt style={s.label}>{label}</Txt><Txt style={muted}>Flexible spending</Txt></View>
+      </View>}
+      {onPress && <ArrowRight size={17} color={embedded ? green : c.accent} />}
     </View>
     <View style={[s.between, { alignItems: "flex-end", gap: 8 }]}>
       <View style={{ flexShrink: 1 }}>
         <Txt style={[s.number, { fontSize: 25, letterSpacing: -0.7, color: balanceColor }]}>{money(Math.abs(data.monthLeft))}</Txt>
-        <Txt style={{ color: c.muted, fontSize: 11, marginTop: 2 }}>{over ? "over budget" : "remaining this month"}</Txt>
+        <Txt style={[muted, { marginTop: 2 }]}>{over ? "over budget" : "remaining this month"}</Txt>
       </View>
-      <Txt style={{ color: c.muted, fontSize: 11 }}>{used === null ? "No allowance" : `${used}% used`}</Txt>
+      <Txt style={muted}>{used === null ? "No allowance" : `${used}% used`}</Txt>
     </View>
-    <View style={{ height: 7, backgroundColor: c.track, borderRadius: 8, overflow: "hidden" }}>
+    <View style={{ height: 7, backgroundColor: embedded ? c.heroLine : c.track, borderRadius: 8, overflow: "hidden" }}>
       <View style={{ height: 7, width: `${bar}%`, backgroundColor: progressColor, borderRadius: 8 }} />
     </View>
-    <View style={s.between}><Txt style={{ color: c.muted, fontSize: 11 }}>Net spent {money(data.monthSpent)}</Txt><Txt style={{ color: c.muted, fontSize: 11 }}>Budget {money(data.monthBudget)}</Txt></View>
+    <View style={[s.between, { gap: 8, flexWrap: "wrap" }]}><Txt style={muted}>Net spent {money(data.monthSpent)}</Txt><Txt style={muted}>Budget {money(data.monthBudget)}</Txt></View>
   </>;
-  const style = [s.panel, { padding: 17, gap: 13 }];
+  const style = embedded ? { gap: 10 } : [s.panel, { padding: 17, gap: 13 }];
   return onPress ? <Pressable accessibilityRole="button" accessibilityLabel="Open monthly activity" onPress={onPress} style={({ pressed }) => [style, { opacity: pressed ? 0.74 : 1 }]}>{content}</Pressable>
     : <View style={style}>{content}</View>;
 }
@@ -173,12 +191,8 @@ export function Today({ data, transactions, date, today, compact, wide, rollover
       {!isToday && <Action tone="soft" onPress={() => onDate(today)}>Back to today</Action>}
     </View>
     <DateStrip date={date} today={today} entries={transactions} onDate={value => onDate(value > today ? today : value)} />
-    <View style={{ flexDirection: wide ? "row" : "column", gap: 13 }}>
-      <View style={{ flex: wide ? 1.45 : undefined, minWidth: 0 }}>
-        <Allowance left={data.dayLeft} spent={data.daySpent} limit={data.daily} rollover={rollover} compact={compact} isToday={isToday} />
-      </View>
-      {wide && <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}><MonthCard data={data} date={date} onPress={activity} /></View>}
-    </View>
+    <Allowance left={data.dayLeft} spent={data.daySpent} limit={data.daily} rollover={rollover} compact={compact} isToday={isToday} wide={wide}
+      monthly={<MonthCard data={data} date={date} onPress={activity} embedded />} />
     <View style={{ gap: 7 }}>
       <View style={s.between}>
         <Txt style={s.title}>{isToday ? "Today’s log" : "Daily log"}</Txt>
@@ -186,7 +200,6 @@ export function Today({ data, transactions, date, today, compact, wide, rollover
       </View>
       <Entries items={data.entries.filter(tx => tx.date === date)} emptyTitle="Nothing logged yet" emptyText="Log a purchase, refund, or extra income to start." add={add} edit={edit} />
     </View>
-    {!wide && <MonthCard data={data} date={date} onPress={activity} />}
   </>;
 }
 
